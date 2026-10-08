@@ -25,6 +25,30 @@ python tools/uart.py ts-dma --port COMx --log logs/tuner.bin
 TS入力はRSPI1とDMAを使用します。`ts-dma`のloopback成功は放送TSの受信成功とは別です。
 `ts-probe`やcaptureで188B同期、TEI、continuity、FIFO状態を確認します。
 
+## フルセグ用のTS取得設定
+
+全帯域profileでは、初期化・選局・TS出力設定後に次の操作を実行します。
+新しいRAM applicationの起動直後を前提にしています。
+
+```powershell
+python tools/uart.py ts-dma --port COMx --log logs/full-ts.bin
+python tools/uart.py ts-clock-max --port COMx --log logs/full-ts.bin
+python tools/uart.py ts-dma-long --port COMx --log logs/full-ts.bin
+python tools/uart.py icache --port COMx --log logs/full-ts.bin
+python tools/uart.py ts-benchmark --port COMx --log logs/full-ts.bin
+python tools/uart.py tmcc --port COMx --log logs/full-ts.bin
+```
+
+`ts-clock-max`はRSPI1のSPBRを0へ設定し、loopbackで検査します。
+`ts-dma-long`はlongword DMAの選択を切り替えるため、繰り返すと無効になります。
+`TS DMA long selected=00000001`を確認してください。
+`icache`も有効・無効を切り替えます。新規RAM起動後に1回実行し、
+`ICACHE CCR1 ... after=00000100`でinstruction cacheの有効化を確認してください。
+benchmarkは10秒間の取得packet数、FIFO状態、同期・TEI・adaptation・continuityを表示します。
+`measured`は測定完了を表します。各エラーが0で、TMCCがstable frame lockであることを確認します。
+単独取得のbenchmarkはWi-Fi同時負荷やPCへの到達を検証しません。
+AP/stream停止中に設定を変更してください。RAMを再起動した場合は設定をやり直します。
+
 ## Wi-Fi転送とPC受信
 
 [open AP](wifi.md)を起動し、PCが`192.168.74.2`へ接続している状態で実行します。
