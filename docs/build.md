@@ -62,3 +62,20 @@ python -m venv .venv
 
 UARTツールはpyserial、USBツールはPyUSBとlibusbを使用します。
 `tools/uart-cycle.ps1`の`-Distribution`でWSL distribution、`-LogDirectory`で出力先を指定できます。
+
+## 別のMT5931 firmwareを選ぶ
+
+既定は同梱の`firmware/mt5931.bin`です。外部ファイルの比較ビルドでは
+`RADIO_FILE`と`RADIO_SHA256`を指定します。検証器が許可したサイズ・SHA256の組だけ使用でき、
+全長とCRC32をapplicationへ埋め込みます。変更時にはapplicationを再リンクします。
+
+```sh
+make RADIO_FILE=/path/to/WIFI_RAM_CODE RADIO_SHA256=<approved-sha256>
+```
+
+検証器が受け付ける外部候補は139,776バイト、SHA256
+`af345785369ee0a53efd85654810ba47463833186201fb3d3e9f9ac8195ca53c`です。
+外部候補は同梱していません。入手・配布条件と対象chipの互換性は別途確認が必要です。
+ビルド成功は、そのfirmwareの実機起動や通信速度を保証しません。
+Wi-Fi firmwareが既に起動している場合、applicationの再実行だけでは差し替わりません。
+比較時にはWi-Fiモジュールを含む電源の再投入が必要です。

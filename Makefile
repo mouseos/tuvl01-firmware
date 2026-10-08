@@ -1,6 +1,8 @@
 TOOLCHAIN ?= $(HOME)/.cache/tuvl01-independent/gcc13/install
 CC = $(TOOLCHAIN)/bin/sh-elf-gcc
 OBJCOPY = sh-elf-objcopy
+RADIO_FILE ?= firmware/mt5931.bin
+RADIO_SHA256 ?= 06d43badbb669700c7cf94924c43a40779b428f3ceec8756813b0aaec2b4a68d
 KERNEL = third_party/FreeRTOS-Kernel
 CFLAGS = -m2a-nofpu -mb -Os -g -ffreestanding -fno-builtin -fno-common -ffunction-sections -fdata-sections -Wall -Wextra -Werror -Iinclude -Ibuild -Irtos/port -I$(KERNEL)/include
 LDFLAGS = -nostdlib -Wl,--gc-sections,--build-id=none
@@ -36,7 +38,11 @@ APP += src/wifi_ais_join.c
 APP += src/ts_benchmark_protocol.c
 HEADERS = $(wildcard include/*.h rtos/port/*.h $(KERNEL)/include/*.h)
 WPA_INPUTS = $(shell python3 tools/wpa_build.py --inputs)
-.PHONY: all clean wifi-app
+.PHONY: all clean wifi-app FORCE
+FORCE:
+build/radio-config.h: FORCE tools/verify_radio.py $(RADIO_FILE)
+	python3 tools/verify_radio.py --radio "$(RADIO_FILE)" --sha256 "$(RADIO_SHA256)"
+.DEFAULT_GOAL := all
 all: build/app.bin build/boot.bin build/initial-spi.bin build/app.img
 build/boot.elf: $(BOOT) linker/boot.ld $(HEADERS)
 	mkdir -p build
@@ -52,9 +58,8 @@ $(INTEGER_RUNTIME): tools/runtime_libgcc.py
 	TUVL_TOOLCHAIN_DIR=$(abspath $(TOOLCHAIN)/..) python3 tools/runtime_libgcc.py
 build/wpa/rsn-core.o: $(WPA_INPUTS) tools/wpa_build.py
 	python3 tools/wpa_build.py --cc $(CC)
-build/app.elf: $(APP) linker/app.ld $(HEADERS) firmware/mt5931.bin tools/verify_radio.py build/tuner_pseq.h $(INTEGER_RUNTIME) build/wpa/rsn-core.o
+build/app.elf: $(APP) linker/app.ld $(HEADERS) build/radio-config.h build/tuner_pseq.h $(INTEGER_RUNTIME) build/wpa/rsn-core.o
 	mkdir -p build
-	python3 tools/verify_radio.py
 	$(CC) $(CFLAGS) $(LDFLAGS) -T linker/app.ld -Wl,-Map,build/app.map $(APP) build/wpa/rsn-core.o $(INTEGER_RUNTIME) -o $@
 build/app.bin: build/app.elf
 	$(OBJCOPY) --gap-fill 0xff -O binary $< $@

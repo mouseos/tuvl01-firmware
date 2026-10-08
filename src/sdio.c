@@ -424,14 +424,15 @@ static int radio_wait(unsigned address,uint32_t mask,uint32_t reject){
 static int radio_image_valid(void){
     const uint32_t *descriptor=wifi_radio_descriptor;
     const uint8_t *radio=wifi_radio_bytes;
-    return descriptor[0]==0x4d543331 && descriptor[1]==0x21580 &&
-       descriptor[2]==0x1061bd8e && descriptor[3]==0xff900000UL &&
-       (uintptr_t)wifi_radio_end-(uintptr_t)radio==0x21580 &&
-       crc32(radio,0x21580)==descriptor[2];
+    return descriptor[0]==0x4d543331 && descriptor[1]>0 && descriptor[1]<=262144 && !(descriptor[1]&63) &&
+       descriptor[3]==0xff900000UL &&
+       (uintptr_t)wifi_radio_end-(uintptr_t)radio==descriptor[1] &&
+       crc32(radio,descriptor[1])==descriptor[2];
 }
 static int radio_boot(unsigned force){
     uart_puts("WIFI boot start\n");
     const uint8_t *radio=wifi_radio_bytes;
+    const unsigned radio_length=wifi_radio_descriptor[1];
     if(!radio_image_valid()){
         uart_puts("WIFI board radio image missing or corrupt\nWIFI boot end status=failed\n");return -1;
     }
@@ -455,21 +456,21 @@ static int radio_boot(unsigned force){
     field("WIFI WMCSR before=",value);uart_puts("\n");
     /* No guessed GPIO or whole-chip reset. Existing INI_RDY must be present. */
     if(radio_wait(0x8c,0x800,0))goto done;
-    if(radio_write(0x90,0x21580>>6) || radio_write(0x8c,1))goto done;
+    if(radio_write(0x90,radio_length>>6) || radio_write(0x8c,1))goto done;
     if(radio_wait(0x8c,0x2000,0x4000))goto done;
     uart_puts("WIFI PLL ready\n");
     download_mode=1;
     if(radio_write(0x88,1) || radio_write(0x84,0xff900000UL))goto done;
     static uint8_t packet[512];
-    for(unsigned offset=0;offset<0x21580;){
-        unsigned n=0x21580-offset;if(n>508)n=508;
+    for(unsigned offset=0;offset<radio_length;){
+        unsigned n=radio_length-offset;if(n>508)n=508;
         unsigned length=(n+7)&~3U;
         packet[0]=(uint8_t)length;packet[1]=(uint8_t)(length>>8);packet[2]=packet[3]=0;
         for(unsigned i=0;i<n;i++)packet[i+4]=radio[offset+i];
         for(unsigned i=n+4;i<length;i++)packet[i]=0;
         if(radio_wait(0x88,0x100,0) || extended_write(0x80,packet,length,0))goto done;
         offset+=n;
-        if(!(offset&0x3fff) || offset==0x21580){field("WIFI downloaded=",offset);uart_puts("\n");}
+        if(!(offset&0x3fff) || offset==radio_length){field("WIFI downloaded=",offset);uart_puts("\n");}
     }
     if(radio_wait(0x8c,0x8000,0x4000))goto done;
     uart_puts("WIFI download OK\n");

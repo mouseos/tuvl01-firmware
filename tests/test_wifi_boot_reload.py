@@ -18,7 +18,8 @@ class BootReload(unittest.TestCase):
 #include <stdint.h>
 #include <string.h>
 typedef uint32_t TickType_t;
-static const uint8_t wifi_radio_bytes[0x21580]={0};
+static const uint8_t wifi_radio_bytes[139776]={0};
+static uint32_t wifi_radio_descriptor[4]={0x4d543331,136576,0,0xff900000};
 static unsigned card_verified,mode,downloads,total,pll,done,ready,failed,bad,identified;
 static unsigned wifi_scan_unresolved;
 static unsigned wifi_connection_unresolved;
@@ -40,7 +41,7 @@ static int radio_read(unsigned a,uint32_t *v){
  return -1;
 }
 static int radio_write(unsigned a,uint32_t v){
- if(a==0x90 && v==(0x21580>>6))return 0;
+ if(a==0x90 && v==(wifi_radio_descriptor[1]>>6))return 0;
  if(a==0x8c && v==1)return 0;
  if(a==0x88 && v<=1)return 0;
  if(a==0x84 && v==0xff900000)return 0;
@@ -60,7 +61,7 @@ static int radio_wait(unsigned a,uint32_t mask,uint32_t reject){
 static int extended_write(unsigned a,const uint8_t *p,unsigned n,int increment){
  if(a!=0x80 || increment || n>512 || n<8 || (n&3) ||
     (p[0]|((unsigned)p[1]<<8))!=n || p[2] || p[3]){bad++;return -1;}
- unsigned remaining=0x21580-total,amount=remaining>508?508:remaining;
+ unsigned remaining=wifi_radio_descriptor[1]-total,amount=remaining>508?508:remaining;
  if(n!=((amount+7)&~3U)){bad++;return -1;}
  for(unsigned i=4;i<n;i++)if(p[i]){bad++;return -1;}
  total+=amount;downloads++;return 0;
@@ -70,7 +71,8 @@ static void uart_puts(const char *s){
  if(!strcmp(s,"WIFI boot end status=ready\n"))ready++;
  if(strstr(s,"WIFI boot end status=failed\n"))failed++;
 }
-void reset(unsigned m){mode=m;card_verified=1;clock_reg=0x100;ticks=0;
+void select_length(unsigned length){wifi_radio_descriptor[1]=length;}
+void reset(unsigned m){wifi_radio_descriptor[1]=136576;mode=m;card_verified=1;clock_reg=0x100;ticks=0;
  wifi_scan_unresolved=1;
  wifi_connection_unresolved=1;
  downloads=total=pll=done=ready=failed=bad=identified=0;}
@@ -105,6 +107,12 @@ unsigned connection_unresolved(void){return wifi_connection_unresolved;}
         self.assertEqual(self.state(), [269, 0x21580, 1, 1, 1, 0, 0, 0])
         self.assertEqual(self.c.unresolved(), 0)
         self.assertEqual(self.c.connection_unresolved(),0)
+
+    def test_candidate_download_uses_full_descriptor_length(self):
+        self.c.reset(0)
+        self.c.select_length(139776)
+        self.assertEqual(self.c.boot(1),0)
+        self.assertEqual(self.state(),[276,139776,1,1,1,0,0,0])
 
     def test_download_failure_cannot_be_hidden_by_stale_ready(self):
         for mode in (1, 2):
