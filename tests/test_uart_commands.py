@@ -6,6 +6,35 @@ sys.path.insert(0,str(pathlib.Path(__file__).resolve().parents[1]/'tools'))
 import uart
 
 class Commands(unittest.TestCase):
+    def test_variable_benchmark_frame_duration_and_serial_cleanup(self):
+        t,error=self.invoke('ts-benchmark','TS benchmark end status=measured',
+                            ['--benchmark-seconds','60'])
+        self.assertIsNone(error)
+        import struct,zlib
+        data=b'TSB1'+struct.pack('>I',60)
+        self.assertEqual([c.args[0] for c in t.write.call_args_list],
+                         [b'i',b'\x05',data+struct.pack('>I',zlib.crc32(data)),b'i'])
+        self.assertEqual(t.wait.call_args.args[1],70)
+        t.expect.assert_any_call('TS benchmark configuration bytes=12 version=1')
+        t.ser.close.assert_called_once()
+    def test_legacy_benchmark_keeps_ten_second_command(self):
+        t,error=self.invoke('ts-benchmark','TS benchmark end status=measured')
+        self.assertIsNone(error)
+        self.assertEqual([c.args[0] for c in t.write.call_args_list],[b'i',b'H',b'i'])
+        self.assertEqual(t.wait.call_args.args[1],20)
+    def test_benchmark_input_rejection_precedes_serial_access(self):
+        for command,seconds in [('ts-benchmark','0'),('ts-benchmark','301'),('diag','60')]:
+            with patch.object(sys,'argv',['uart.py',command,'--port','TEST','--log','unused.log',
+                '--benchmark-seconds',seconds]),patch.object(uart,'Transport') as transport,\
+                contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit):uart.main()
+                transport.assert_not_called()
+    def test_variable_benchmark_failure_does_not_report_success(self):
+        t,error=self.invoke('ts-benchmark','TS benchmark end status=rejected',
+                            ['--benchmark-seconds','300'])
+        self.assertIsInstance(error,RuntimeError)
+        self.assertEqual(t.wait.call_args.args[1],310)
+        t.ser.close.assert_called_once()
     def test_wifi_restart_requires_ready_and_closes_transport(self):
         for status in ('ready','failed','refused-active','refused-state'):
             t,error=self.invoke('wifi-restart','WIFI restart end status='+status)

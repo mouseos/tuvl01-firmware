@@ -49,6 +49,18 @@ benchmarkは10秒間の取得packet数、FIFO状態、同期・TEI・adaptation�
 単独取得のbenchmarkはWi-Fi同時負荷やPCへの到達を検証しません。
 AP/stream停止中に設定を変更してください。RAMを再起動した場合は設定をやり直します。
 
+測定時間を1〜300秒で指定できます。省略時は従来の10秒commandを使用します。
+
+```powershell
+python tools/uart.py ts-benchmark --benchmark-seconds 60 --port COMx --log logs/full-ts.bin
+```
+
+指定時間の1つのwindow内でTSのcontinuity状態を保持し、FIFO再同期時のエラーも数えます。
+設定packetは`TSB1`、seconds uint32 big endian、先行8BのCRC32の計12Bです。
+新しいcommandはbyte `0x05`で開始し、12Bの受信には3秒の期限があります。
+このcommandに対応したfirmwareが必要です。測定中は他のUART/USB command処理を待たせるため、
+PCツールは測定時間に合わせて応答を待ちます。途中の復旧が必要ならCPUをリセットしてください。
+
 ## Wi-Fi転送とPC受信
 
 [open AP](wifi.md)を起動し、PCが`192.168.74.2`へ接続している状態で実行します。

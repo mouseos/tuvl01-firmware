@@ -16,6 +16,7 @@ void tuner_ts_clock_max(void);
 void tuner_ts_enable(void);
 void tuner_ts_capture(void);
 void tuner_ts_benchmark(void);
+void tuner_ts_benchmark_receive(void);
 void tuner_ts_stream_start(void);
 void tuner_ts_stream_test_source(void);
 void tuner_ts_stream_frame_size(void);

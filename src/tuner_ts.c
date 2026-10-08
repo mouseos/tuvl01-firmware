@@ -8,6 +8,7 @@
 #include "sdio.h"
 #include "ts_check.h"
 #include "ts_pattern.h"
+#include "ts_benchmark_protocol.h"
 
 #define S(n) R8(0xffff8800UL+(n))
 #define DMA(n,o) R32(0xfffe1000UL+16UL*(n)+(o))
@@ -29,6 +30,7 @@ static unsigned stream_frame_packets=7;
 int tuner_ts_stream_active(void){return streaming!=0;}
 void tuner_ts_stream_wifi_ticks(unsigned ticks){if(streaming)stream_poll_ticks+=ticks;}
 static void field(const char *name,unsigned number);
+static void benchmark(unsigned seconds);
 void tuner_ts_stream_interrupt(void){if(streaming)tuner_ts_stream_stop();}
 void tuner_ts_stream_stop(void){
     sdio_wifi_ts_timing_stop();
@@ -351,11 +353,13 @@ void tuner_ts_stream_poll(void){
         if(position==pending){pending=position=0;return;}
     }
 }
-void tuner_ts_benchmark(void){
+void tuner_ts_benchmark(void){benchmark(10);}
+static void benchmark(unsigned seconds){
     static struct ts_check check;
     unsigned empty=0,over=0,under=0,reserved=0,read_ticks=0;
     uint8_t byte;int result=-1;
     uart_puts("TS benchmark start\n");
+    field("TS benchmark duration seconds=",seconds);uart_puts("\n");
     ts_check_reset(&check);
     if(tuner_read_register(0x61,0x97,&byte)){
         uart_puts("TS benchmark guard=frame-read-failed\n");goto failed;
@@ -367,7 +371,7 @@ void tuner_ts_benchmark(void){
         uart_puts("TS benchmark guard=fifo-sync-failed\n");goto failed;
     }
     TickType_t start=xTaskGetTickCount();
-    while((TickType_t)(xTaskGetTickCount()-start)<pdMS_TO_TICKS(10000)){
+    while((TickType_t)(xTaskGetTickCount()-start)<pdMS_TO_TICKS(seconds*1000U)){
         TickType_t before=xTaskGetTickCount();
         int n=read_packets(packets,32,1);
         read_ticks+=(TickType_t)(xTaskGetTickCount()-before);
@@ -392,6 +396,21 @@ failed:
     field(" comparisons=",check.comparisons);field(" cc_jumps=",check.cc_jumps);
     field(" cc_repeats=",check.cc_repeats);uart_puts("\n");
     uart_puts(result?"TS benchmark end status=failed\n":"TS benchmark end status=measured\n");
+}
+void tuner_ts_benchmark_receive(void){
+    uint8_t packet[12];unsigned received=0;
+    TickType_t start=xTaskGetTickCount();
+    uart_puts("TS benchmark configuration bytes=12 version=1\n");
+    while(received<sizeof packet){
+        int c=uart_getc();
+        if(c>=0)packet[received++]=(uint8_t)c;else vTaskDelay(1);
+        if((TickType_t)(xTaskGetTickCount()-start)>=pdMS_TO_TICKS(3000)){
+            uart_puts("TS benchmark end status=transport-timeout\n");return;
+        }
+    }
+    unsigned seconds=ts_benchmark_seconds(packet,sizeof packet);
+    if(!seconds){uart_puts("TS benchmark end status=rejected\n");return;}
+    benchmark(seconds);
 }
 void tuner_ts_capture(void){
     uart_puts("TS capture start\n");

@@ -97,6 +97,8 @@ def main():
     command_arg=p.add_argument('command',choices=['upload','resume','run','cycle','save','recover','diag','pins','sdio','wifi','mac','capability','scan','board','ap','apstop','load','audit','wifi-stats','wifi-verbose','wifi-clock','wifi-width','wifi-read-poll','wifi-write-poll','wifi-ts-feedback','wifi-nic-stats','wifi-link','wifi-rate','wifi-poll-reuse','wifi-status-poll','wifi-poll-budget','wifi-irq','wifi-read-check','tuner','tuner-board','tuner-analog','tuner-init','ts-burst','ts-aggregate','ts-probe','ts-output','ts-dma','ts-dma-long','ts-benchmark','ts-clock','ts-clock-max','icache','tuner-monitor','tuner-fec','tuner-quality','tmcc','uhf-base','vlow-base'])
     p.add_argument('--port',required=True);p.add_argument('--image',type=pathlib.Path)
     p.add_argument('--log',type=pathlib.Path,required=True)
+    p.add_argument('--benchmark-seconds',type=int,
+                   help='TS acquisition duration 1..300; requires variable-duration firmware')
     command_arg.choices.extend(['ais-channel','ais-auth','ais-assoc','ais-connect','wifi-restart'])
     p.add_argument('--ais-channel',type=int)
     p.add_argument('--ais-bssid',help='Explicit AP BSSID, colon-separated; no automatic selection')
@@ -124,6 +126,8 @@ def main():
     command_arg.choices.append('wifi-auto-per')
     command_arg.choices.extend(['wifi-rx-start','wifi-rx-stop','wifi-rx-stats'])
     a=p.parse_args()
+    if a.benchmark_seconds is not None and (a.command!='ts-benchmark' or not 1<=a.benchmark_seconds<=300):
+        p.error('--benchmark-seconds is valid only for ts-benchmark, with 1..300 seconds')
     ais_target=None
     if a.command in ('ais-channel','ais-auth','ais-assoc','ais-connect'):
         if a.ais_channel is None or not 1<=a.ais_channel<=13:p.error('--ais-channel must be 1..13')
@@ -414,8 +418,14 @@ def main():
                 t.write(b'i');t.expect('UART application')
                 if not result.endswith('=ready'):raise RuntimeError('SDIO read check failed; see UART log')
             if a.command=='ts-benchmark':
-                t.write(b'i');t.expect('UART application');t.write(b'H')
-                result=t.wait(lambda s:s.startswith('TS benchmark end status='),20)
+                t.write(b'i');t.expect('UART application')
+                if a.benchmark_seconds is None:t.write(b'H')
+                else:
+                    t.write(b'\x05');t.expect('TS benchmark configuration bytes=12 version=1')
+                    packet=b'TSB1'+struct.pack('>I',a.benchmark_seconds)
+                    t.write(packet+struct.pack('>I',zlib.crc32(packet)))
+                result=t.wait(lambda s:s.startswith('TS benchmark end status='),
+                              20 if a.benchmark_seconds is None else a.benchmark_seconds+10)
                 print(result)
                 t.write(b'i');t.expect('UART application')
                 if not result.endswith('=measured'):raise RuntimeError('TS acquisition measurement failed; see UART log')
