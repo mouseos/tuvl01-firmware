@@ -9,7 +9,9 @@ unsigned wifi_station_pack(uint8_t *out,unsigned capacity,const struct wifi_stat
     unsigned nonzero=0;for(unsigned i=0;i<6;i++)nonzero|=c->peer[i];
     if(!nonzero)return 0;
     uint8_t p[48]={0};
-    p[9]=c->network?0x22:0x41;
+    /* Authentication starts with the P2P-network provisional client role.
+     * Our open AP accepts ordinary infrastructure clients, not P2P GCs. */
+    p[9]=c->network?(c->state==3?0x21:0x22):0x41;
     for(unsigned i=0;i<6;i++)p[10+i]=c->peer[i];
     p[16]=(uint8_t)c->aid;p[17]=(uint8_t)(c->aid>>8);
     p[18]=(uint8_t)c->listen;p[19]=(uint8_t)(c->listen>>8);

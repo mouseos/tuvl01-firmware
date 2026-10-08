@@ -47,7 +47,7 @@ const uint8_t *result(void){return saved;}
         for profile,mask,basic,phy in ((0,0x3fcf,0x054f,3),(1,0x3fc0,0x0540,2)):
             self.c.reset(profile,0,mask);self.assertEqual(self.c.update(3,1),0)
             b=C.string_at(self.c.result(),48)
-            self.assertEqual(b[8:16],bytes([0,0x22,2,1,2,3,4,5]))
+            self.assertEqual(b[8:16],bytes([0,0x21,2,1,2,3,4,5]))
             self.assertEqual(b[16:26],bytes([1,0,3,0,1,phy])+mask.to_bytes(2,'little')+basic.to_bytes(2,'little'))
             self.assertEqual(b[28],3);self.assertEqual(b[41:43],bytes([137,1]))
     def test_fixed54_preserves_literal_verified_word_order_and_refuses_missing_peer_rate(self):
@@ -60,7 +60,7 @@ const uint8_t *result(void){return saved;}
         b=C.string_at(self.c.result(),48);self.assertEqual(b[29:41],bytes(12));self.assertEqual(b[26],0)
         self.assertEqual(self.c.update(3,1),0);b=C.string_at(self.c.result(),48)
         self.assertEqual(b[21],11);self.assertEqual(b[26:28],bytes([1,0]));self.assertEqual(b[29:34],bytes([255,0,27,12,0]))
-        self.assertEqual(b[41:43],bytes([137,1]));self.assertEqual(b[8:16],bytes([0,0x22,2,1,2,3,4,5]))
+        self.assertEqual(b[41:43],bytes([137,1]));self.assertEqual(b[8:16],bytes([0,0x21,2,1,2,3,4,5]))
     def test_profile_change_refuses_active_or_retained_peer(self):
         for state in ((1,0,0),(0,1,0),(0,0,1)):
             self.c.reset(0,0,0x3fcf);self.c.active(*state);self.c.sdio_wifi_rate_profile();self.assertEqual(self.c.selected(),0)

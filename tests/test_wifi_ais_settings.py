@@ -61,11 +61,15 @@ class Settings(unittest.TestCase):
         expected[28] = 3; expected[41:43] = bytes([137, 1])
         self.assertEqual(out.raw, bytes(expected))
 
-    def test_legacy_p2p_and_preassociation_station_fields(self):
+    def test_ap_client_role_changes_after_association(self):
         c = self.station(); c.network = 1; c.aid = 1
         out = C.create_string_buffer(48)
         self.assertEqual(self.c.wifi_station_pack(out, 48, C.byref(c)), 48)
-        self.assertEqual((out.raw[9], out.raw[20]), (0x22, 1))
+        self.assertEqual((out.raw[9], out.raw[20]), (0x21, 1))
+        for state in (1, 2):
+            c.state = state; c.aid = 0
+            self.assertEqual(self.c.wifi_station_pack(out, 48, C.byref(c)), 48)
+            self.assertEqual((out.raw[9], out.raw[28], out.raw[42]), (0x22, state, 0))
         c.network = 0; c.state = 1; c.aid = 0
         self.assertEqual(self.c.wifi_station_pack(out, 48, C.byref(c)), 48)
         self.assertEqual((out.raw[9], out.raw[28], out.raw[42]), (0x41, 1, 0))

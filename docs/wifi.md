@@ -5,6 +5,7 @@
 MT5931をSDIO経由で操作し、同梱radio firmwareをロードします。
 open APは単一peer、DHCP、ARP、ICMP echo、UDP echo、TS送信に対応します。
 AP側IPは`192.168.74.1`、PCへ割り当てるIPは`192.168.74.2`です。
+APに接続するPCを通常のinfrastructure clientとして登録します。Wi-Fi Directのgroup clientには対応しません。
 WPA2 stationでの保護されたIP通信は未対応です。
 
 ## open AP起動
