@@ -1,0 +1,13 @@
+build/
+toolchain/
+manual-local.txt
+*-manual.png
+loader-analysis.bin
+__pycache__/
+logs/
+vendor-local/
+toolchain-bootstrap.log
+.venv/
+/analysis/
+core
+core.*

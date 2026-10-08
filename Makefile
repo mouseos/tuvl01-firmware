@@ -1,0 +1,63 @@
+TOOLCHAIN ?= $(HOME)/.cache/tuvl01-independent/gcc13/install
+CC = $(TOOLCHAIN)/bin/sh-elf-gcc
+OBJCOPY = sh-elf-objcopy
+KERNEL = third_party/FreeRTOS-Kernel
+CFLAGS = -m2a-nofpu -mb -Os -g -ffreestanding -fno-builtin -fno-common -ffunction-sections -fdata-sections -Wall -Wextra -Werror -Iinclude -Ibuild -Irtos/port -I$(KERNEL)/include
+LDFLAGS = -nostdlib -Wl,--gc-sections,--build-id=none
+INTEGER_RUNTIME = $(TOOLCHAIN)/lib/tuvl01/libgcc-sh2a-be.a
+COMMON = src/startup.S src/board.c src/runtime.c src/usb.c
+BOOT = $(COMMON) src/boot.c src/image.c src/flash.c
+APP = $(COMMON) src/app.c src/cache.c src/cache_control.S src/image.c src/flash.c src/sdio.c src/wifi_board.c src/wifi_mgmt.c src/wifi_hif.c src/wifi_net.c src/wifi_tx_feedback.c src/wifi_statistics.c src/tuner.c src/tuner_ts.c src/ts_protocol.c src/ts_check.c src/tuner_profile.c src/tuner_profile_protocol.c src/tuner_monitor.c src/tuner_monitor_protocol.c src/tuner_tmcc.c src/tuner_tmcc_protocol.c src/radio.S rtos/port/port.c rtos/port/portasm.S $(KERNEL)/tasks.c $(KERNEL)/list.c
+APP += src/wifi_link.c
+APP += src/wifi_ts_tx.c
+APP += src/wifi_status.c
+APP += src/sdio_irq.c
+APP += src/wifi_queue.c
+APP += src/ts_pattern.c
+APP += src/wifi_fw_query.c
+APP += src/wifi_tx_timing.c
+APP += src/wifi_rates.c
+APP += src/wifi_rx_sink.c
+APP += src/wifi_ht.c
+APP += src/wifi_io_timing.c
+APP += src/time_counts.c
+APP += src/wifi_service_timing.c
+APP += src/wifi_raw_tx.c
+APP += src/wifi_fixed_rate.c
+APP += src/wifi_channel.c
+APP += src/wifi_power_events.c
+APP += src/wifi_ais_mgmt.c
+APP += src/wifi_station.c src/wifi_ais_bss.c
+APP += src/wifi_ais_beacon.c
+APP += src/wifi_scan.c
+APP += src/wifi_scan_cache.c
+APP += src/wifi_ais_rsn.c
+APP += src/wifi_ais_join.c
+HEADERS = $(wildcard include/*.h rtos/port/*.h $(KERNEL)/include/*.h)
+WPA_INPUTS = $(shell python3 tools/wpa_build.py --inputs)
+.PHONY: all clean wifi-app
+all: build/app.bin build/boot.bin build/initial-spi.bin build/app.img
+build/boot.elf: $(BOOT) linker/boot.ld $(HEADERS)
+	mkdir -p build
+	$(CC) $(CFLAGS) $(LDFLAGS) -T linker/boot.ld -Wl,-Map,build/boot.map $(BOOT) -o $@
+build/boot.bin: build/boot.elf
+	$(OBJCOPY) -O binary $< $@
+build/initial-spi.bin build/app.img &: build/boot.bin build/app.bin tools/images.py
+	python3 tools/images.py
+build/tuner_pseq.h: firmware/mn885521-pseq.bin firmware/mn885521-pseq.json tools/pseq.py
+	mkdir -p build
+	python3 tools/pseq.py
+$(INTEGER_RUNTIME): tools/runtime_libgcc.py
+	TUVL_TOOLCHAIN_DIR=$(abspath $(TOOLCHAIN)/..) python3 tools/runtime_libgcc.py
+build/wpa/rsn-core.o: $(WPA_INPUTS) tools/wpa_build.py
+	python3 tools/wpa_build.py --cc $(CC)
+build/app.elf: $(APP) linker/app.ld $(HEADERS) firmware/mt5931.bin tools/verify_radio.py build/tuner_pseq.h $(INTEGER_RUNTIME) build/wpa/rsn-core.o
+	mkdir -p build
+	python3 tools/verify_radio.py
+	$(CC) $(CFLAGS) $(LDFLAGS) -T linker/app.ld -Wl,-Map,build/app.map $(APP) build/wpa/rsn-core.o $(INTEGER_RUNTIME) -o $@
+build/app.bin: build/app.elf
+	$(OBJCOPY) --gap-fill 0xff -O binary $< $@
+wifi-app: build/app.img
+	cp build/app.img build/wifi-app.img
+clean:
+	rm -f build/*.elf build/*.bin build/*.map build/*.json

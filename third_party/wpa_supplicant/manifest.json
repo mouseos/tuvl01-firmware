@@ -1,0 +1,312 @@
+{
+  "version": "2.12",
+  "source_url": "https://w1.fi/releases/wpa_supplicant-2.12.tar.gz",
+  "archive_sha256": "08e23937e16d0155e55cab2b51f51fbe10d80a1aa91c4e15442645059b737ef6",
+  "signature_verified": false,
+  "license": "BSD-3-Clause",
+  "sources": [
+    "rsn_supp/wpa.c",
+    "rsn_supp/wpa_ie.c",
+    "rsn_supp/pmksa_cache.c",
+    "common/wpa_common.c",
+    "common/ieee802_11_common.c",
+    "utils/common.c",
+    "utils/wpabuf.c",
+    "utils/bitfield.c",
+    "crypto/aes-internal.c",
+    "crypto/aes-internal-enc.c",
+    "crypto/aes-internal-dec.c",
+    "crypto/aes-wrap.c",
+    "crypto/aes-unwrap.c",
+    "crypto/aes-omac1.c",
+    "crypto/aes-ctr.c",
+    "crypto/aes-siv.c",
+    "crypto/md5.c",
+    "crypto/md5-internal.c",
+    "crypto/sha1.c",
+    "crypto/sha1-internal.c",
+    "crypto/sha1-pbkdf2.c",
+    "crypto/sha1-prf.c",
+    "crypto/sha256.c",
+    "crypto/sha256-internal.c",
+    "crypto/sha256-prf.c"
+  ],
+  "files": {
+    "COPYING": {
+      "bytes": 965,
+      "sha256": "a87ac4e333d0f120408a9d814e40c3672cd27f365af89b4f2f6631f7a9338953"
+    },
+    "README": {
+      "bytes": 2351,
+      "sha256": "83be1b142c59ccf0d6c5dde0695d8f84dfba109bea058e78ec2942389ccf327f"
+    },
+    "src/common/defs.h": {
+      "bytes": 15813,
+      "sha256": "372268475a3d4a7d96df7664ed0350ca8d100341e0368effee26ff289860066e"
+    },
+    "src/common/dpp.h": {
+      "bytes": 29734,
+      "sha256": "eeb7ffdb836f45bdfeea1be357e55acc8f324d0afd0c02d740198d82a8fe25f0"
+    },
+    "src/common/eapol_common.h": {
+      "bytes": 2535,
+      "sha256": "74eecebfcd2bb3e792d45f3f2c27e61881d3627b77eb908326594dfe89e35140"
+    },
+    "src/common/ieee802_11_common.c": {
+      "bytes": 107631,
+      "sha256": "24e70820d7bd308e2c5734029978285305af7a3ded3f179ad434a6423440a005"
+    },
+    "src/common/ieee802_11_common.h": {
+      "bytes": 12703,
+      "sha256": "a56acaf454fd824ac23e2cbfd022511a2ab225c5a215b43bd2a68b84634c60a7"
+    },
+    "src/common/ieee802_11_defs.h": {
+      "bytes": 113448,
+      "sha256": "cfb1b7760c209b3b2d2fe60faebb2034a0e7e19574bc3f8a0f7a726eb38629ab"
+    },
+    "src/common/nan_defs.h": {
+      "bytes": 22538,
+      "sha256": "96f569528c555d61ba0e30ba9d201e6dafb19d699bcd2e875141790206b075a0"
+    },
+    "src/common/ocv.h": {
+      "bytes": 1232,
+      "sha256": "0d7dcca88edcef987a68d00c82d6927bc4b72e89e48477c668757e2f19a0e117"
+    },
+    "src/common/qca-vendor.h": {
+      "bytes": 1080004,
+      "sha256": "885d4da1c3df35cfdf585f3f75b8e7a558b593f5e5ed9f24fde239739dbfe398"
+    },
+    "src/common/wpa_common.c": {
+      "bytes": 130867,
+      "sha256": "215b2e978ef630124f0b04cde551137b26bc29d625a58c2e63582474af81d48a"
+    },
+    "src/common/wpa_common.h": {
+      "bytes": 28418,
+      "sha256": "7ec1e0df859452b19f01019d0e0456e79c50bc0a08d3b7b785c033d5f0e16ac6"
+    },
+    "src/common/wpa_ctrl.h": {
+      "bytes": 31368,
+      "sha256": "fd533934181c2e1395d3a1c78f6ae1dc6ec43033552679b1e773018cd8ce06d6"
+    },
+    "src/crypto/aes-ctr.c": {
+      "bytes": 1677,
+      "sha256": "9b59ba5cf7ac8c34354b3a9e6866ec06b09f56dbfed4c62e2529cd502f6a3e30"
+    },
+    "src/crypto/aes-internal-dec.c": {
+      "bytes": 3724,
+      "sha256": "cca1e63146f2b14f96aae6f7f0ec66fd180057585d950f78e339d200ff0de8bd"
+    },
+    "src/crypto/aes-internal-enc.c": {
+      "bytes": 2721,
+      "sha256": "37e6fe45118c71bb9ee49f16b6eed7404e9a7f53a4bbe50615ea18d6aef5a37a"
+    },
+    "src/crypto/aes-internal.c": {
+      "bytes": 42221,
+      "sha256": "9d5cd189f3564db33386c154a1312247396c2c687798121f6ff255322bcbcbb8"
+    },
+    "src/crypto/aes-omac1.c": {
+      "bytes": 4571,
+      "sha256": "7aa7e111406394c81eed0ed70e68bebcba1c73886ac5674455c0b754d2caa3a8"
+    },
+    "src/crypto/aes-siv.c": {
+      "bytes": 4161,
+      "sha256": "62b22418e3758d8e4efda5dd7cbf2125fcc3a62fd27c70e57b9107f3b208ae07"
+    },
+    "src/crypto/aes-unwrap.c": {
+      "bytes": 1818,
+      "sha256": "3df86f1b5573998a49e09bcad1b5b6ccccefb86811160aad5b4659f85b2b3202"
+    },
+    "src/crypto/aes-wrap.c": {
+      "bytes": 1655,
+      "sha256": "0ec94ce24727a4f6355c1aeba363485f233577e66acec39aede445b89014200b"
+    },
+    "src/crypto/aes.h": {
+      "bytes": 548,
+      "sha256": "710da4b2754b07e970e11947f6b59a9737fc2c4d675009e5ac8c96ce79d5c491"
+    },
+    "src/crypto/aes_i.h": {
+      "bytes": 4258,
+      "sha256": "8d0a22c836de2303ea5d5c1918ff5310cb37c7c0ad57b16113bfab4a982e52d6"
+    },
+    "src/crypto/aes_siv.h": {
+      "bytes": 565,
+      "sha256": "b1fb28abac83195ad6f9da2f17a40905d3ee809b18eb51f4ce4f6b8485ddfb5f"
+    },
+    "src/crypto/aes_wrap.h": {
+      "bytes": 2975,
+      "sha256": "b8db43cb468039b0fe8dc25fa4c82473eeb490a5f87257c57fabb0a17641ea8e"
+    },
+    "src/crypto/crypto.h": {
+      "bytes": 45784,
+      "sha256": "6d932310297cfdae6e0a210367787c6a288535157fa12156df95e1c9c0776d55"
+    },
+    "src/crypto/md5-internal.c": {
+      "bytes": 8999,
+      "sha256": "0cddc78a4a108828a3ee724bc5aeb50d79d3ddcab07baa6c90c4936793ca89c2"
+    },
+    "src/crypto/md5.c": {
+      "bytes": 2705,
+      "sha256": "d797bec0545da21ef59ad4321f123723f69536528c873b60171b9c597450aecc"
+    },
+    "src/crypto/md5.h": {
+      "bytes": 505,
+      "sha256": "be69fe50179b8a19ff2f9215e1fa19779c5e5cafd670ce0c16ffc7480f66cce8"
+    },
+    "src/crypto/md5_i.h": {
+      "bytes": 516,
+      "sha256": "e1c2be601c934351bdcd0fdb774016d138dc42eb46d3ba21f479ad368836e2f4"
+    },
+    "src/crypto/random.h": {
+      "bytes": 855,
+      "sha256": "dc1637594b3f59112cd196825b750a14803b9d28eca466c9747b6aca6351d42f"
+    },
+    "src/crypto/sha1-internal.c": {
+      "bytes": 9144,
+      "sha256": "5907d5f9ca7a5d26804d106f14e2bea84fc8e6c10a7b1aa09bab33dd4627a237"
+    },
+    "src/crypto/sha1-pbkdf2.c": {
+      "bytes": 2505,
+      "sha256": "f826d1c54d71354b85153f87dac8e312b20b04fe172e2f23d3121e570a1c1693"
+    },
+    "src/crypto/sha1-prf.c": {
+      "bytes": 1620,
+      "sha256": "47a71e33e3bca4bf41e302f441c023b8534efdf003aba241e1364887d374a890"
+    },
+    "src/crypto/sha1.c": {
+      "bytes": 2751,
+      "sha256": "31624aef199f166128332ed92b9ec22afb21f78d996b0d3821ae3fc0531a86fc"
+    },
+    "src/crypto/sha1.h": {
+      "bytes": 1050,
+      "sha256": "f09d331edebc87573d1324f6be49b1df178f2883eef47d9545cb5e9d4db8983d"
+    },
+    "src/crypto/sha1_i.h": {
+      "bytes": 590,
+      "sha256": "9645c3f5c56855192a32c63b907cbd37cb048ed0572c26b155dea975a1d8bcb4"
+    },
+    "src/crypto/sha256-internal.c": {
+      "bytes": 6077,
+      "sha256": "a08d395f20f2b6efa0548e27d1396ed15ab8b313fc63611c418c8497713f58ec"
+    },
+    "src/crypto/sha256-prf.c": {
+      "bytes": 2918,
+      "sha256": "c2bbbe03affc84c598c379121b4ecf02d790fe8662bd568706049aadaa5de64d"
+    },
+    "src/crypto/sha256.c": {
+      "bytes": 2880,
+      "sha256": "bcce4a95dc5ad20f3d2bf5afc6fd61fb02beb6dfc8f0c0794fc49d634877e1e5"
+    },
+    "src/crypto/sha256.h": {
+      "bytes": 1212,
+      "sha256": "53c0a20570af8763ff0ba362ae85219e1a05c608d22f8802b56c1dd940966863"
+    },
+    "src/crypto/sha256_i.h": {
+      "bytes": 584,
+      "sha256": "7d448cf1f0c51af92e7d15498eb786d88a050363d2e99764e6901a00e2257e1a"
+    },
+    "src/crypto/sha384.h": {
+      "bytes": 1212,
+      "sha256": "017468111c85f007ef94f03052be463971439118b9e2b6c2fdae908ddc2b3de2"
+    },
+    "src/crypto/sha512.h": {
+      "bytes": 949,
+      "sha256": "b5194ea25542c92333cec082e4314732375b965f34d5642d6984dd8de8064dbe"
+    },
+    "src/drivers/driver.h": {
+      "bytes": 244648,
+      "sha256": "109413f73450e8d4dbe6d70a1270c29717056a014b3986d948ca41b183554cf1"
+    },
+    "src/eap_common/eap_defs.h": {
+      "bytes": 3502,
+      "sha256": "d9ca1be1372ee66e29c431b1add37e1e273899e5187950f9e915b4ceadba0d37"
+    },
+    "src/eapol_supp/eapol_supp_sm.h": {
+      "bytes": 15301,
+      "sha256": "9dd5b8ad261447353d236ccd1f0dc902ac1c6f171e8fa0c0c9d69e10750e14cb"
+    },
+    "src/rsn_supp/pmksa_cache.c": {
+      "bytes": 27392,
+      "sha256": "15caf0ca689d4a6d282e0fcd1bd6e339eb0054ed5a47a509d798e49ae6bf5b7a"
+    },
+    "src/rsn_supp/pmksa_cache.h": {
+      "bytes": 3612,
+      "sha256": "70e70423efbd6f27b3e4fc8bf43019156a24ae6bc174eb050928e3ad23b28e6d"
+    },
+    "src/rsn_supp/preauth.h": {
+      "bytes": 1940,
+      "sha256": "2e071f58efea9a4b4a70ec9eeb7723cf24a2860a638916d60303dd56b5cdf299"
+    },
+    "src/rsn_supp/wpa.c": {
+      "bytes": 217717,
+      "sha256": "60275d6bf6babcbdfb30d3469a088acc6b6cb8fe545dbfe102fce3ea03b2ae0d"
+    },
+    "src/rsn_supp/wpa.h": {
+      "bytes": 22015,
+      "sha256": "f1a05d741bd65bf8f0840742e09840dc6af2f8c93f89c321c3011605b9387df1"
+    },
+    "src/rsn_supp/wpa_i.h": {
+      "bytes": 16802,
+      "sha256": "3340a97f5affb795dd66a00726f79082308feff8f0384091f1241e8fb8761b75"
+    },
+    "src/rsn_supp/wpa_ie.c": {
+      "bytes": 13958,
+      "sha256": "d5be5d80e8c63bb7b631b52871e2fd13c2c02b9ad401bfc38bceebeeb3e11842"
+    },
+    "src/rsn_supp/wpa_ie.h": {
+      "bytes": 838,
+      "sha256": "a2ed63b3520eebc162896a2d0a2250ab6255c43aed0e38a36cbc7c3b8802cc20"
+    },
+    "src/utils/bitfield.c": {
+      "bytes": 3915,
+      "sha256": "50b881a64c20dbf4de313123f74bc09861b312ad2806eeb0b49141056669bf10"
+    },
+    "src/utils/bitfield.h": {
+      "bytes": 1199,
+      "sha256": "7b82954f2749f68ab9ee227940ecd4c81c0192f71a23e61a74f2f5a57e1d11da"
+    },
+    "src/utils/common.c": {
+      "bytes": 26166,
+      "sha256": "e52cdfe4ef0f352fec86c78f308dfc6d288ab742fc56ed838bf1b4c9a5f9e4c1"
+    },
+    "src/utils/common.h": {
+      "bytes": 16838,
+      "sha256": "dccb36fccd466ba596f448b0a410206a51c3632deea998a7999942b1cac37e7b"
+    },
+    "src/utils/eloop.h": {
+      "bytes": 14103,
+      "sha256": "d45c24b627df7cc8f61db8eb90ffd4c6070e63c00a7bd60838daee66a4b6b2a6"
+    },
+    "src/utils/includes.h": {
+      "bytes": 1137,
+      "sha256": "bc840835cbf0b17058a42a43de657d9f4e9e5b33dff9d4473b3f8c76b49129cc"
+    },
+    "src/utils/list.h": {
+      "bytes": 2446,
+      "sha256": "1ba5fdf54017b7c6c8a94d057e5b2c27cc915ea019c2d2baf0ba46c026c7d0bb"
+    },
+    "src/utils/os.h": {
+      "bytes": 20668,
+      "sha256": "6f7c96d0994e15dce721c737145f61ca44876fe7a9081be6c56f437ecbdfcc1e"
+    },
+    "src/utils/trace.h": {
+      "bytes": 2252,
+      "sha256": "67fefac1c618ef46330292052076745b4be0f894d7c0a8061a744c00e0bc6021"
+    },
+    "src/utils/wpa_debug.h": {
+      "bytes": 13306,
+      "sha256": "d34fbd17973a30cc2c7703fa8b006d739a409234aee95ab212b70b239de8bc48"
+    },
+    "src/utils/wpabuf.c": {
+      "bytes": 8503,
+      "sha256": "ff9c59b7bddbb40c44d467a6e2ce01de255640481517e5d34290c49e60636299"
+    },
+    "src/utils/wpabuf.h": {
+      "bytes": 5354,
+      "sha256": "ff03ca7d32ab5b283872605da8ab7f6bca146fc4c7beb860a48c77b1a3f9bb53"
+    },
+    "src/utils/build_config.h": {
+      "bytes": 1408,
+      "sha256": "fc8856529f91f068b31459958be9606dd4cc7dc43e5c9601a583504321d29066"
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "commit": "bebaecbeaf430e36a2d30d31a2fed4e098388c93",
+  "files": {
+    "nanoprintf.h": {
+      "url": "https://raw.githubusercontent.com/charlesnicholson/nanoprintf/bebaecbeaf430e36a2d30d31a2fed4e098388c93/nanoprintf.h",
+      "size": 93345,
+      "sha256": "e9c82abd6a9448745ba38cd1aa02fb9d71430ef13d35d9384c54fc1a9f88a86d"
+    },
+    "LICENSE": {
+      "url": "https://raw.githubusercontent.com/charlesnicholson/nanoprintf/bebaecbeaf430e36a2d30d31a2fed4e098388c93/LICENSE",
+      "size": 2599,
+      "sha256": "aeb80987a2dfde106a1beeb4a6fbc07d9ec09af7b75eb69dd4e7d0f313a08345"
+    }
+  }
+}
