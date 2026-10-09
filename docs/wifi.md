@@ -100,6 +100,21 @@ TS開始ログの`aggregate`と`burst`で実際の送信設定を確認してく
 
 ### TS送信中のタスク待機
 
+`ts-pipeline`は、2つの32packetバッファで次のDMA取得と現在のWi-Fi送信を
+重ねる実験用設定です。既定は無効です。TS停止中に長word DMAのループバックを
+検証し、operand cacheを無効にしてから選択します。
+
+```sh
+python tools/uart.py ts-dma-long --port COMx --log <external-log-path>
+python tools/uart.py ts-pipeline --port COMx --log <external-log-path>
+```
+
+DMAが完了したバッファだけを送信へ渡し、credit待ちで未送信データを上書きしません。
+停止・エラー・UART recoveryではDMA要求を先に解除し、channel・routing・RSPI幅を戻します。
+`TS pipeline reads`は完了した取得数、`elapsed_ticks`は取得開始から完了確認までの
+累計時間です。Wi-Fi処理と重なるため、CPU占有時間ではありません。
+疑似TS設定ではDMAを使用しません。
+
 `ts-burst`が有効な場合、送信が進んだ後は次のservice passを続けます。
 各passでUSB・UART・radioを処理し、4ms経過またはcredit待ち・データなし・
 エラーで進まなくなった場合に1tick待機して他のRTOS taskへ実行機会を渡します。

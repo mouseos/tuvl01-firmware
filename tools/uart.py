@@ -105,6 +105,7 @@ def main():
     command_arg.choices.append('wifi-tx-window')
     command_arg.choices.append('wifi-queues')
     command_arg.choices.append('ts-test-source')
+    command_arg.choices.append('ts-pipeline')
     command_arg.choices.append('wifi-station-stats')
     command_arg.choices.extend(['ts-frame-size','wifi-tx-timing'])
     command_arg.choices.append('wifi-rate-profile')
@@ -392,6 +393,11 @@ def main():
                 result=t.wait(lambda s:s.startswith('WIFI queues end status='),10)
                 print(result);t.write(b'i');t.expect('UART application')
                 if not result.endswith('=selected'):raise RuntimeError('Stop AP before changing queue parameters')
+            if a.command=='ts-pipeline':
+                t.write(b'i');t.expect('UART application');t.write(bytes([9]))
+                result=t.wait(lambda s:s.startswith('TS pipeline end status='),10)
+                print(result);t.write(b'i');t.expect('UART application')
+                if not result.endswith('=selected'):raise RuntimeError('Stop TS and verify long DMA before enabling the pipeline')
             if a.command=='ts-test-source':
                 t.write(b'i');t.expect('UART application');t.write(b'7')
                 result=t.wait(lambda s:s.startswith('TS test source end status='),10)

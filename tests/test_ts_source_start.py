@@ -12,6 +12,11 @@ static uint8_t packets[32*188];
 static unsigned streaming,pending,position,sequence,packet_index,stream_flags,stream_over,stream_under,stream_busy;
 static unsigned stream_read_ticks,stream_tx_ticks,stream_poll_ticks,stream_test_source;
 static unsigned stream_frame_packets=7,stream_aggregate,stream_burst;
+static unsigned stream_pipeline,dma_verified,dma_long_verified;
+static unsigned stream_dma_reads,stream_dma_ticks;
+static uint32_t ccr;
+#define R32(a) ccr
+static void stream_pipeline_abort(void){}
 static unsigned reads,syncs,fills,bad_read;
 static void sdio_wifi_io_start(void){}
 static void uart_puts(const char *s){(void)s;}
@@ -22,10 +27,12 @@ static int tuner_read_register(unsigned bank,unsigned reg,uint8_t *v){
 static int synchronize_quiet(unsigned quiet){(void)quiet;syncs++;return 0;}
 static unsigned ts_pattern_fill(uint8_t *out,unsigned capacity){(void)out;(void)capacity;fills++;return 32;}
 void reset(unsigned source,unsigned active,unsigned bad){
+ stream_pipeline=0;
  stream_test_source=source;streaming=active;bad_read=bad;reads=syncs=fills=0;
  sequence=17;packet_index=99;
 }
 unsigned state(unsigned i){unsigned s[]={streaming,stream_test_source,reads,syncs,fills,sequence,packet_index};return s[i];}
+void pipeline(unsigned dma,unsigned wide,unsigned cache){stream_pipeline=1;dma_verified=dma;dma_long_verified=wide;ccr=cache;}
 '''
         cls.tmp=tempfile.TemporaryDirectory();path=pathlib.Path(cls.tmp.name)
         (path/'start.c').write_text(harness+body)
@@ -49,4 +56,10 @@ unsigned state(unsigned i){unsigned s[]={streaming,stream_test_source,reads,sync
         self.assertEqual(self.state(),[1,1,0,0,0,17,99])
         self.lib.reset(1,0,0);self.lib.tuner_ts_stream_test_source()
         self.assertEqual(self.state(),[0,0,0,0,0,17,99])
+    def test_pipeline_live_start_requires_verified_long_dma_and_uncached_data(self):
+        for dma,wide,cache in [(0,1,0),(1,0,0),(1,1,1)]:
+            self.lib.reset(0,0,0);self.lib.pipeline(dma,wide,cache);self.lib.tuner_ts_stream_start()
+            self.assertEqual(self.state(),[0,0,0,0,0,17,99])
+        self.lib.reset(0,0,0);self.lib.pipeline(1,1,0);self.lib.tuner_ts_stream_start()
+        self.assertEqual(self.state(),[1,0,1,1,0,0,0])
 if __name__=='__main__':unittest.main()

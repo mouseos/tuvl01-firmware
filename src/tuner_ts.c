@@ -27,18 +27,24 @@ static unsigned stream_burst;
 static unsigned stream_aggregate;
 static unsigned stream_test_source;
 static unsigned stream_frame_packets=7;
+static unsigned stream_pipeline;
+static unsigned stream_dma_ticks,stream_dma_reads;
+static void stream_pipeline_abort(void);
 int tuner_ts_stream_active(void){return streaming!=0;}
 void tuner_ts_stream_wifi_ticks(unsigned ticks){if(streaming)stream_poll_ticks+=ticks;}
 static void field(const char *name,unsigned number);
 static void benchmark(unsigned seconds);
 void tuner_ts_stream_interrupt(void){if(streaming)tuner_ts_stream_stop();}
 void tuner_ts_stream_stop(void){
+    stream_pipeline_abort();
     sdio_wifi_ts_timing_stop();
     streaming=0;pending=position=0;
     field("TS stream datagrams=",sequence);field(" packets=",packet_index);
     field(" overrun=",stream_over);field(" underrun=",stream_under);field(" busy=",stream_busy);uart_puts("\n");
     field("TS timing read_ticks=",stream_read_ticks);field(" tx_ticks=",stream_tx_ticks);
-    field(" poll_ticks=",stream_poll_ticks);uart_puts("\nTS stream end status=stopped\n");
+    field(" poll_ticks=",stream_poll_ticks);uart_puts("\n");
+    field("TS pipeline reads=",stream_dma_reads);field(" elapsed_ticks=",stream_dma_ticks);
+    uart_puts("\nTS stream end status=stopped\n");
 }
 static void field(const char *name,unsigned number){uart_puts(name);uart_hex(number);}
 static void registers(void){
@@ -94,10 +100,17 @@ static int end(void){
     S(0)=8;return 0;
 }
 /* SH726A manual11.3/17.3: CH0 TX, CH1 RX, byte transfers. Requests
- * 55/56 use the extension selector. CPU interrupts remain disabled (IE=0);
+ * 55/56 use the extension selector. DMA channel interrupts stay disabled (IE=0);
  * RSPI SPTIE/SPRIE route peripheral requests to the selected DMA channels.
  * The UART task exclusively owns RSPI1; never borrow active DMA channels. */
-static int dma_exchange(const uint8_t *tx,uint8_t *rx,unsigned size,unsigned increment,unsigned wide){
+struct ts_dma_state {
+    unsigned active,wide,old_spdcr,old_bfcr,old_command,old_or,old_select;
+    uint8_t clock;
+    TickType_t start;
+};
+static struct ts_dma_state ts_dma;
+static int dma_start(const uint8_t *tx,uint8_t *rx,unsigned size,unsigned increment,unsigned wide){
+    if(ts_dma.active){phase="dma-owned";return -1;}
     uintptr_t source=(uintptr_t)tx,destination=(uintptr_t)rx;
     unsigned unit=wide?4:1;
     if(!size || size>6016 || source<0x1c000000UL || destination<0x1c000000UL ||
@@ -105,67 +118,74 @@ static int dma_exchange(const uint8_t *tx,uint8_t *rx,unsigned size,unsigned inc
        (wide && ((source|destination|size)&3U))){
         phase="dma-buffer";return -1;
     }
-    unsigned old_spdcr=S(11),old_bfcr=S(32),old_command=R16(0xffff8810UL);
+    ts_dma.wide=wide;ts_dma.old_spdcr=S(11);ts_dma.old_bfcr=S(32);
+    ts_dma.old_command=R16(0xffff8810UL);
     if(wide){
         if(wait_status(0x40,"dma-width-boundary"))return -1;
         if(R16(0xffff8822UL)){phase="dma-width-not-empty";return -1;}
         S(11)=0x60;S(32)=0x22;R16(0xffff8810UL)=0xe280;
     }
-    uint8_t clock=R8(0xfffe0018UL);
-    R8(0xfffe0018UL)=clock&~0x20U;(void)R8(0xfffe0018UL);
-    unsigned old_or=DMAOR,old_select=DMARS0;
-    if(old_or&6){phase="dma-existing-error";goto unavailable;}
+    ts_dma.clock=R8(0xfffe0018UL);
+    R8(0xfffe0018UL)=ts_dma.clock&~0x20U;(void)R8(0xfffe0018UL);
+    ts_dma.old_or=DMAOR;ts_dma.old_select=DMARS0;
+    if(ts_dma.old_or&6){phase="dma-existing-error";goto unavailable;}
     for(unsigned n=0;n<16;n++)if(DMA(n,12)&1){phase="dma-in-use";goto unavailable;}
-    /* Reading before clearing acknowledges any prior TE/HE flag. */
     (void)DMA(0,12);(void)DMA(1,12);DMA(0,12)=0;DMA(1,12)=0;
     DMA(0,0)=source;DMA(0,4)=0xffff8804UL;DMA(0,8)=size/unit;
     DMA(1,0)=0xffff8804UL;DMA(1,4)=destination;DMA(1,8)=size/unit;
     DMARS0=0x5655;(void)DMARS0;
-    DMAOR=old_or|1;(void)DMAOR;
-    /* Arm the receiver first. Fixed zero source for TS; increment for test. */
+    DMAOR=ts_dma.old_or|1;(void)DMAOR;
     DMA(1,12)=0x4801|(wide?0x10:0);
     DMA(0,12)=(increment?0x1801:0x0801)|(wide?0x10:0);
     __asm__ volatile("" ::: "memory");
+    ts_dma.start=xTaskGetTickCount();ts_dma.active=1;
     S(0)|=0xa0;(void)S(0);
-    TickType_t start=xTaskGetTickCount();int result=-1;
-    for(;;){
-        unsigned tx_control=DMA(0,12),rx_control=DMA(1,12);
-        if(DMAOR&6){phase="dma-address-or-nmi";break;}
-        if(S(3)&5){phase="dma-rspi-error";break;}
-        if((tx_control&2) && (rx_control&2)){
-            if(DMA(0,8) || DMA(1,8)){phase="dma-count";break;}
-            result=0;break;
-        }
-        if((TickType_t)(xTaskGetTickCount()-start)>=pdMS_TO_TICKS(100)){
-            phase="dma-timeout";break;
-        }
+    return 0;
+unavailable:
+    R8(0xfffe0018UL)=ts_dma.clock;(void)R8(0xfffe0018UL);
+    if(wide){S(11)=ts_dma.old_spdcr;S(32)=ts_dma.old_bfcr;R16(0xffff8810UL)=ts_dma.old_command;}
+    return -1;
+}
+/* Pending is zero, complete is one, errors are negative; never wait here. */
+static int dma_poll(void){
+    if(!ts_dma.active){phase="dma-not-owned";return -1;}
+    unsigned tx_control=DMA(0,12),rx_control=DMA(1,12);
+    if(DMAOR&6){phase="dma-address-or-nmi";return -1;}
+    if(S(3)&5){phase="dma-rspi-error";return -1;}
+    if((tx_control&2) && (rx_control&2)){
+        if(DMA(0,8) || DMA(1,8)){phase="dma-count";return -1;}
+        return 1;
     }
-    /* Disable request generation before disabling channels, so cleanup cannot
-     * leave a peripheral request routed to the CPU. Preserve other DMAOR bits
-     * and any error flags for the diagnostic rather than silently clearing. */
+    if((TickType_t)(xTaskGetTickCount()-ts_dma.start)>=pdMS_TO_TICKS(100)){
+        phase="dma-timeout";return -1;
+    }
+    return 0;
+}
+static int dma_finish(int result,unsigned report){
+    if(!ts_dma.active)return result;
+    /* Disable requests first; release only our channels and restore routing.
+     * Keep error flags rather than clearing another owner's diagnostics. */
     S(0)&=(uint8_t)~0xa0U;(void)S(0);
     DMA(0,12)&=~1U;DMA(1,12)&=~1U;
-    if(result){
+    if(result && report){
         field("TS DMA failure DMAOR=",DMAOR);field(" TX_CHCR=",DMA(0,12));
         field(" RX_CHCR=",DMA(1,12));field(" TX_remaining=",DMA(0,8));
         field(" RX_remaining=",DMA(1,8));uart_puts("\n");
     }
-    (void)DMA(0,12);(void)DMA(1,12);
-    DMA(0,12)=0;DMA(1,12)=0;
-    DMARS0=old_select;(void)DMARS0;
-    DMAOR=(DMAOR&~1U)|(old_or&1U);(void)DMAOR;
+    (void)DMA(0,12);(void)DMA(1,12);DMA(0,12)=0;DMA(1,12)=0;
+    DMARS0=ts_dma.old_select;(void)DMARS0;
+    DMAOR=(DMAOR&~1U)|(ts_dma.old_or&1U);(void)DMAOR;
     __asm__ volatile("" ::: "memory");
-    R8(0xfffe0018UL)=clock;(void)R8(0xfffe0018UL);
-    if(wide){
-        if(!result && wait_status(0x40,"dma-width-end"))result=-1;
-        if(result){S(0)=8;S(32)=0xc0;S(32)=0;}
-        S(11)=old_spdcr;S(32)=old_bfcr;R16(0xffff8810UL)=old_command;
-    }
-    return result;
-unavailable:
-    R8(0xfffe0018UL)=clock;(void)R8(0xfffe0018UL);
-    if(wide){S(11)=old_spdcr;S(32)=old_bfcr;R16(0xffff8810UL)=old_command;}
-    return -1;
+    R8(0xfffe0018UL)=ts_dma.clock;(void)R8(0xfffe0018UL);
+    if(ts_dma.wide && !result && wait_status(0x40,"dma-width-end"))result=-1;
+    if(result){S(0)=8;S(32)=0xc0;S(32)=0;}
+    if(ts_dma.wide){S(11)=ts_dma.old_spdcr;S(32)=ts_dma.old_bfcr;R16(0xffff8810UL)=ts_dma.old_command;}
+    ts_dma.active=0;return result;
+}
+static int dma_exchange(const uint8_t *tx,uint8_t *rx,unsigned size,unsigned increment,unsigned wide){
+    if(dma_start(tx,rx,size,increment,wide))return -1;
+    int result;while(!(result=dma_poll())){}
+    return dma_finish(result<0?-1:0,1);
 }
 void tuner_ts_dma_probe(void){
     static uint8_t tx[128],rx[128];static const uint8_t zero;
@@ -281,16 +301,23 @@ int tuner_ts_read(uint8_t *buffer,unsigned max_packets){return read_packets(buff
 void tuner_ts_stream_start(void){
     uint8_t v;uart_puts("TS stream start\n");
     if(streaming){uart_puts("TS stream begin status=refused-active\n");return;}
+    if(stream_pipeline && !stream_test_source &&
+       (!dma_verified || !dma_long_verified || (R32(0xfffc1000UL)&1U))){
+        uart_puts("TS stream begin status=refused-dma-state\n");return;
+    }
     if(stream_test_source){
         if(ts_pattern_fill(packets,sizeof packets)!=32){uart_puts("TS stream begin status=failed\n");return;}
     }else if(tuner_read_register(0x61,0x97,&v) || (v&0x18)!=0x10 || synchronize_quiet(1)){
         uart_puts("TS stream begin status=failed\n");return;
     }
+    stream_pipeline_abort();
     pending=position=sequence=packet_index=stream_over=stream_under=stream_busy=stream_flags=0;
     stream_read_ticks=stream_tx_ticks=stream_poll_ticks=0;
+    stream_dma_ticks=stream_dma_reads=0;
     field("TS stream test_source=",stream_test_source);uart_puts("\n");
     field("TS stream packets_per_datagram=",stream_frame_packets);
     field(" aggregate=",stream_aggregate);field(" burst=",stream_burst);uart_puts("\n");
+    field("TS stream pipeline=",stream_pipeline);uart_puts("\n");
     streaming=1;uart_puts("TS stream begin status=active\n");
     sdio_wifi_io_start();
 }
@@ -320,8 +347,87 @@ void tuner_ts_stream_aggregate(void){
     field("TS aggregate selected=",stream_aggregate);uart_puts("\n");
     uart_puts("TS aggregate end status=selected\n");
 }
+/* Two independently owned buffers: current is readable by TX, inflight only
+ * by DMA, ready is complete but not yet handed to TX. Index 2 means empty. */
+static uint8_t pipe_packets[2][TUNER_TS_PACKET*TUNER_TS_MAX_PACKETS] __attribute__((aligned(4)));
+static unsigned pipe_current=2,pipe_inflight=2,pipe_ready=2,pipe_gap,pipe_flags[2];
+static void stream_pipeline_abort(void){
+    if(ts_dma.active)(void)dma_finish(-1,0);
+    pipe_current=pipe_inflight=pipe_ready=2;pipe_gap=0;
+    pipe_flags[0]=pipe_flags[1]=0;
+}
+void tuner_ts_stream_pipeline(void){
+    if(streaming){uart_puts("TS pipeline end status=refused-active\n");return;}
+    if(!stream_pipeline && (!dma_verified || !dma_long_verified || (R32(0xfffc1000UL)&1U))){
+        uart_puts("TS pipeline end status=refused-dma-state\n");return;
+    }
+    stream_pipeline^=1;
+    field("TS pipeline selected=",stream_pipeline);uart_puts("\nTS pipeline end status=selected\n");
+}
+static int pipe_begin(unsigned index){
+    uint8_t response[5],discard;
+    if(status(response))return -1;
+    int result=tuner_ts_classify(response[4]);
+    if(result!=1)return result;
+    static const uint8_t command[5]={0x0b,0,0,31,0};
+    static const uint32_t zero;
+    begin();
+    for(unsigned n=0;n<5;n++)if(exchange(command[n],&discard))return failure();
+    if(dma_start((const uint8_t *)&zero,pipe_packets[index],sizeof pipe_packets[index],0,1))return failure();
+    pipe_flags[index]=pipe_gap;pipe_gap=0;pipe_inflight=index;
+    return 1;
+}
+static int stream_pipeline_poll(void){
+    if(pipe_inflight!=2){
+        int done=dma_poll();
+        if(done){
+            if(done>0){stream_dma_reads++;stream_dma_ticks+=(TickType_t)(xTaskGetTickCount()-ts_dma.start);}
+            if(dma_finish(done<0?-1:0,1) || end() || pipe_ready!=2){
+                tuner_ts_stream_stop();uart_puts("TS stream failure=pipeline-dma\n");return 0;
+            }
+            pipe_ready=pipe_inflight;pipe_inflight=2;
+        }
+    }
+    if(!pending && pipe_ready!=2){
+        pipe_current=pipe_ready;pipe_ready=2;
+        pending=32;position=0;stream_flags=pipe_flags[pipe_current];
+    }
+    /* Start the next read before spending CPU time packing/transmitting the
+     * current buffer. Never issue an RSPI command while DMA owns that bus. */
+    if(pipe_inflight==2 && pipe_ready==2){
+        unsigned free_index=pipe_current==0?1:0;
+        TickType_t before=xTaskGetTickCount();
+        int n=pipe_begin(free_index);
+        stream_read_ticks+=(TickType_t)(xTaskGetTickCount()-before);
+        if(n<0){
+            if(n==-3 || n==-2){
+                if(n==-3)stream_over++;else stream_under++;
+                pipe_gap=1;
+                if(synchronize_quiet(1)){tuner_ts_stream_stop();return 0;}
+            }else {tuner_ts_stream_stop();uart_puts("TS stream failure=pipeline-read\n");return 0;}
+        }
+    }
+    if(!pending)return 0;
+    unsigned limit=stream_burst?5:1;
+    for(unsigned attempt=0;attempt<limit;attempt++){
+        unsigned n=pending-position,maximum=stream_aggregate?14:stream_frame_packets;
+        if(n>maximum)n=maximum;
+        TickType_t before=xTaskGetTickCount();
+        const uint8_t *data=pipe_packets[pipe_current]+position*188;
+        int sent=stream_aggregate?sdio_wifi_ts_pair(data,n,sequence,packet_index,stream_flags):
+            sdio_wifi_ts(data,n,sequence,packet_index,stream_flags);
+        stream_tx_ticks+=(TickType_t)(xTaskGetTickCount()-before);
+        if(sent<0){tuner_ts_stream_stop();uart_puts("TS stream failure=wifi-tx\n");return 0;}
+        if(!sent){stream_busy++;return 0;}
+        unsigned accepted=stream_aggregate?(unsigned)sent:n;
+        sequence+=(accepted+6)/7;packet_index+=accepted;position+=accepted;stream_flags=0;
+        if(position==pending){pending=position=0;pipe_current=2;return stream_burst!=0;}
+    }
+    return stream_burst!=0;
+}
 int tuner_ts_stream_poll(void){
     if(!streaming)return 0;
+    if(stream_pipeline && !stream_test_source)return stream_pipeline_poll();
     if(!pending){
         TickType_t before=xTaskGetTickCount();
         int n=stream_test_source?32:read_packets(packets,32,1);

@@ -14,6 +14,8 @@ static uint8_t packets[32*188];
 static unsigned streaming,pending,position,sequence,packet_index,stream_flags,stream_over,stream_under,stream_busy;
 static unsigned stream_read_ticks,stream_tx_ticks,stream_poll_ticks,stream_burst,stream_aggregate,stream_test_source;
 static unsigned stream_frame_packets=7;
+static unsigned stream_pipeline;
+static int stream_pipeline_poll(void){return 0;}
 static unsigned tick,reads,calls,stops;
 static int replies[16];
 static unsigned sizes[16],offsets[16],sequences[16],indices[16],flags[16];

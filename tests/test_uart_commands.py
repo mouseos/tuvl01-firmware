@@ -113,6 +113,13 @@ class Commands(unittest.TestCase):
                 self.assertIn('Longword DMA probe failed',str(error))
             transport.ser.close.assert_called_once()
 
+    def test_pipeline_selection_uses_binary_key_and_reports_refusal(self):
+        for status in ('selected','refused-active','refused-dma-state'):
+            transport,error=self.invoke('ts-pipeline','TS pipeline end status='+status)
+            if status=='selected':self.assertIsNone(error)
+            else:self.assertIsInstance(error,RuntimeError)
+            self.assertEqual([call.args[0] for call in transport.write.call_args_list],[b'i',bytes([9]),b'i'])
+            transport.ser.close.assert_called_once()
     def test_width_failure_is_not_reported_as_verified(self):
         for status in ('verified-reads','failed'):
             transport,error=self.invoke('wifi-width','WIFI width end status='+status)
