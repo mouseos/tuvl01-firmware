@@ -12,8 +12,8 @@ MT5931用radio firmwareとMN885521用PSEQデータを同梱しています。
 | UARTによるapplicationのRAM転送・CRC検査・実行 | 対応 |
 | UARTによるSPI application更新・読戻し | 対応。先頭64KiBを保護 |
 | MT5931 open AP、単一PC接続、DHCP・ARP・ping・UDP | 対応 |
-| UHFワンセグTSのWi-Fi転送 | 対応。周波数と受信環境に依存 |
-| フルセグ | 設定・転送コードあり。連続受信・転送は未保証 |
+| UHFワンセグTSのWi-Fi転送 | 対応。周波数と受信環境に依存。RAM実行で、PCのTVTest表示まで確認 |
+| フルセグ | 設定・転送コードあり。実機ではLayer-Bが全局で不良のため、受信・転送は未達 |
 | WPA2 station | 実験用RSN処理あり。保護された通信は未実装 |
 | SH726A native USB | 実装あり。列挙・転送・更新は未確認 |
 

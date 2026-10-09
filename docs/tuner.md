@@ -160,3 +160,15 @@ python tools/uart.py tuner-reg --reg 62:e8=02 --port COMx --log <external-log-pa
 `stock`は純正の初期化と同じ`PB14=1`・`PB15=0`、`alt`は`PB15`だけを上げた状態です。
 `inverse`は`PB14=0`・`PB15=1`で、チューナーがI2Cに応答しなくなります。復旧には`tuner-init`が必要です。
 実測では、`alt`にしてもRSSI・CN・PERは変わりませんでした。RFスイッチの制御端子としては確認できていません。
+
+## 実機で確認した範囲
+
+次の範囲を、RAM実行のbuildで確認しています。受信地域・アンテナ・時間帯で結果は変わります。
+
+- ワンセグ（UHF partial設定）: TS取得、open APへのWi-Fi接続、DHCP、ping、UDP、25秒単位のTS転送を繰り返し、
+  データグラム欠落・TSの同期／TEI／adaptation／CCエラーが0であることを確認しました。
+- 受信TSをffmpegでデコードして映像と音声を取り出せること、`tools/wifi_connect.py`の`--ts-forward-port`と
+  TVTestの`BonDriver_UDP`で表示できることを確認しました。放送がスクランブルされている場合のCAS環境は別途必要です。
+- フルセグ（13seg）: 選局・TMCC同期は成立しますが、受信できた全局でLayer-B（64QAM）のPERがほぼ100%でした。
+  CNの値は未較正で、dB換算はしていません。アンテナ・受信位置を含め、原因は未確定です。
+- 連続数分以上の転送、USB列挙、WPA2通信、SPIへ書込んだimageからの起動は確認していません。
