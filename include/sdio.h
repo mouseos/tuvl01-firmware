@@ -45,6 +45,7 @@ void sdio_wifi_ht(void);
 void sdio_wifi_fixed_mcs(void);
 void sdio_wifi_more_data(void);
 void sdio_wifi_tx_bench_size(void);
+void sdio_wifi_tx_bench_burst(void);
 void sdio_wifi_tx_bench_start(void);
 void sdio_wifi_tx_bench_stop(void);
 void sdio_wifi_tx_bench_poll(void);

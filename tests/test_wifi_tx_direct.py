@@ -20,9 +20,9 @@ static uint32_t board_time_counts(void){return counts_now;}
 static unsigned wifi_bench_active,wifi_bench_sent,wifi_bench_stalls,wifi_bench_failed;
 static uint32_t wifi_bench_begin;
 static uint8_t wifi_bench_body[1472];
-static unsigned wifi_bench_size=1332;
+static unsigned wifi_bench_size=1332,wifi_bench_burst=1;
 static unsigned wifi_ap_active=1,wifi_peer_activated=1,wifi_tx_fault,wifi_sink_active,stream,raw_mode;
-static unsigned wifi_tc1_free=14,wifi_data_tx,clock_now,window_slots=4,writes,reserved,write_error,poll_error;
+static unsigned wifi_tc1_free=14,wifi_data_tx,clock_now,window_slots=4,writes,reserved,write_error,poll_error,write_ticks;
 static uint8_t wifi_mac[6]={0,3,0x69,7,0x1d,0x22},wifi_peer[6]={0x6c,0x4c,0xe2,0x0d,0x50,0xd4},saved[1536];
 static unsigned xTaskGetTickCount(void){return clock_now;}
 static int tuner_ts_stream_active(void){return stream;}
@@ -34,16 +34,18 @@ static unsigned ts_window_slots(void){return wifi_tc1_free?window_slots:0;}
 static int extended_write(unsigned address,const uint8_t *p,unsigned n,int inc){
     (void)address;(void)inc;writes++;reserved=wifi_tc1_free;
     if(n!=sizeof saved)return -1;
-    memcpy(saved,p,n);counts_now+=1003;return write_error;
+    memcpy(saved,p,n);counts_now+=1003;clock_now+=write_ticks;return write_error;
 }
 void state(unsigned mask){
     wifi_ap_active=!(mask&1);wifi_peer_activated=!(mask&2);wifi_tx_fault=mask&4;
     wifi_sink_active=mask&8;stream=mask&16;raw_mode=mask&32;clock_now=100;
     wifi_tc1_free=14;window_slots=4;writes=reserved=wifi_data_tx=0;
     write_error=poll_error=0;wifi_bench_active=wifi_bench_sent=wifi_bench_failed=0;
-    counts_now=10000;wifi_ts_window=14;wifi_bench_size=1332;
+    counts_now=10000;wifi_ts_window=14;wifi_bench_size=1332;wifi_bench_burst=1;write_ticks=0;
 }
 unsigned selected(void){return wifi_bench_size;}
+unsigned burst(void){return wifi_bench_burst;}
+void slow(unsigned n){write_ticks=n;}
 void credits(unsigned n){wifi_tc1_free=n;}
 void window(unsigned n){window_slots=n;}
 void tick(unsigned n){clock_now=n;}
@@ -71,6 +73,23 @@ unsigned timing(unsigned kind,unsigned field){
     @classmethod
     def tearDownClass(cls):cls.tmp.cleanup()
     def values(self):return [self.c.result(i) for i in range(8)]
+    def test_burst_limits_credit_exhaustion_fault_and_service_budget(self):
+        self.c.state(0);self.c.sdio_wifi_tx_bench_burst();self.assertEqual(self.c.burst(),4)
+        self.c.sdio_wifi_tx_bench_start();self.c.sdio_wifi_tx_bench_poll()
+        self.assertEqual((self.c.result(1),self.c.result(4)),(4,10))
+        self.c.sdio_wifi_tx_bench_burst();self.assertEqual(self.c.burst(),4)
+        self.c.sdio_wifi_tx_bench_stop();self.c.sdio_wifi_tx_bench_burst();self.assertEqual(self.c.burst(),8)
+        self.c.sdio_wifi_tx_bench_start();self.c.credits(2);self.c.sdio_wifi_tx_bench_poll()
+        self.assertEqual((self.c.result(1),self.c.result(4),self.c.result(2)),(2,0,1))
+        self.c.state(0);self.c.sdio_wifi_tx_bench_burst();self.c.sdio_wifi_tx_bench_start();self.c.fail(1)
+        self.c.sdio_wifi_tx_bench_poll();self.assertEqual((self.c.result(5),self.c.result(4),self.c.result(7)),(1,13,1))
+        self.c.state(0);self.c.sdio_wifi_tx_bench_burst();self.c.sdio_wifi_tx_bench_burst()
+        self.c.tick(0xfffffffe);self.c.sdio_wifi_tx_bench_start();self.c.slow(2);self.c.sdio_wifi_tx_bench_poll()
+        self.assertEqual((self.c.result(1),self.c.result(5)),(2,2))
+        self.c.sdio_wifi_tx_bench_stop();self.c.sdio_wifi_tx_bench_burst();self.assertEqual(self.c.burst(),1)
+        for mask in (8,16):
+            self.c.state(mask);self.c.sdio_wifi_tx_bench_burst();self.assertEqual(self.c.burst(),1)
+
     def test_size_cycle_wire_lengths_checksums_and_padding(self):
         self.c.state(0)
         for size in (1472,64,256,512,1024,1332):

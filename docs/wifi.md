@@ -114,3 +114,5 @@ radio firmwareがdataの通知を返さない場合もあり、通知なしを�
 aggregateのサンプル枠が満杯でもTS送信は継続します。
 
 The direct UDP test accepts `--payload-bytes` with 64, 256, 512, 1024, 1332 (default), or 1472 bytes. UART byte 0x07 cycles these sizes while the sender, receive sink, and TS stream are stopped. The PC tool selects and verifies the requested size before starting. Each SDIO write remains 1536 bytes to compare wireless payload lengths with the same host transfer size. Payload size includes the 12-byte sequence header.
+
+Use `--burst 1` (default), `4`, or `8` to limit direct UDP packets submitted per service pass. UART byte 0x08 cycles this limit. Each pass returns after no progress or four elapsed RTOS ticks; an in-progress SDIO transfer retains its existing timeout. Each packet reserves one validated credit, and uncertain writes stop the sender without a refund or retry. These passes send individual SDIO transactions. The PC receiver requests a 1MiB socket buffer and records the buffer size granted by the OS.

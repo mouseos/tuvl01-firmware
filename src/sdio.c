@@ -18,7 +18,7 @@ static unsigned wifi_more_data;
 static unsigned wifi_bench_active,wifi_bench_sent,wifi_bench_stalls,wifi_bench_failed;
 static uint32_t wifi_bench_begin;
 static uint8_t wifi_bench_body[1472];
-static unsigned wifi_bench_size=1332;
+static unsigned wifi_bench_size=1332,wifi_bench_burst=1;
 static uint32_t wifi_sink_begin,wifi_sink_end;
 #include "wifi_tx_feedback.h"
 #include "wifi_statistics.h"
@@ -2232,6 +2232,13 @@ void sdio_wifi_tx_bench_size(void){
     }
     field("WIFI TX bench size payload_bytes=",wifi_bench_size);uart_puts("\n");
 }
+void sdio_wifi_tx_bench_burst(void){
+    if(wifi_bench_active || wifi_sink_active || tuner_ts_stream_active()){
+        uart_puts("WIFI TX bench burst status=refused-active\n");return;
+    }
+    wifi_bench_burst=wifi_bench_burst==1?4:wifi_bench_burst==4?8:1;
+    field("WIFI TX bench burst packets=",wifi_bench_burst);uart_puts("\n");
+}
 void sdio_wifi_tx_bench_start(void){
     if(wifi_bench_active || !wifi_ap_active || !wifi_peer_activated || wifi_tx_fault ||
        wifi_sink_active || tuner_ts_stream_active() || sdio_wifi_raw_tx_selected()){
@@ -2246,7 +2253,7 @@ void sdio_wifi_tx_bench_start(void){
     wifi_bench_begin=xTaskGetTickCount();wifi_bench_active=1;
     uart_puts("WIFI TX bench begin status=active\n");
 }
-void sdio_wifi_tx_bench_poll(void){
+static void bench_poll_one(void){
     static uint8_t packet[1536];
     if(!wifi_bench_active)return;
     if((uint32_t)(xTaskGetTickCount()-wifi_bench_begin)>=10000U || wifi_bench_sent>=20000U){
@@ -2276,6 +2283,16 @@ void sdio_wifi_tx_bench_poll(void){
         wifi_tx_fault=1;wifi_bench_failed=1;bench_finish("failed");return;
     }
     ++wifi_bench_sent;++wifi_data_tx;
+}
+void sdio_wifi_tx_bench_poll(void){
+    uint32_t begin=xTaskGetTickCount();
+    for(unsigned i=0;i<wifi_bench_burst && wifi_bench_active;i++){
+        unsigned before=wifi_bench_sent;
+        bench_poll_one();
+        /* Return to UART/USB/RX service on no progress or after 4ms.
+         * Each frame still reserves its own validated TC1 resource. */
+        if(wifi_bench_sent==before || (uint32_t)(xTaskGetTickCount()-begin)>=4U)break;
+    }
 }
 void sdio_wifi_more_data(void){
     if(wifi_ap_active || wifi_peer_state || wifi_peer_activate_pending || tuner_ts_stream_active() || sdio_wifi_raw_tx_selected()){

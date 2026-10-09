@@ -7,16 +7,19 @@ def main():
     p.add_argument('--interface',required=True);p.add_argument('--restore-profile',required=True)
     p.add_argument('--uart-port',required=True);p.add_argument('--output',type=pathlib.Path,required=True)
     p.add_argument("--payload-bytes",type=int,choices=(64,256,512,1024,1332,1472),default=1332)
+    p.add_argument("--burst",type=int,choices=(1,4,8),default=1)
     a=p.parse_args();a.output.parent.mkdir(parents=True,exist_ok=True)
     original=wifi_connect.data_test;results=[]
     def diagnostic(interface,result,*args,**kwargs):
         results.append(result);original(interface,result,*args,**kwargs)
         client=result['data']['lease'];server=result['data']['server']
         payload_path=a.output.with_name(a.output.stem+'-payload.bin')
-        trial={'payload_file':str(payload_path),'payload_bytes':a.payload_bytes,'received':0,'invalid':0,'reordered':0,'duplicates':0}
+        trial={'payload_file':str(payload_path),'payload_bytes':a.payload_bytes,'burst':a.burst,'received':0,'invalid':0,'reordered':0,'duplicates':0}
         result['tx_bench']=trial;packets={};last=-1;digest=hashlib.sha256()
         log_path=a.output.with_name(a.output.stem+'-uart.bin');trial['uart_log']=str(log_path)
         with log_path.open('ab') as log,socket.socket(socket.AF_INET,socket.SOCK_DGRAM) as udp:
+            udp.setsockopt(socket.SOL_SOCKET,socket.SO_RCVBUF,1024*1024)
+            trial["socket_receive_buffer_bytes"]=udp.getsockopt(socket.SOL_SOCKET,socket.SO_RCVBUF)
             udp.bind((client,4204));udp.settimeout(.2);t=Transport(a.uart_port,log)
             started=False
             try:
@@ -27,6 +30,12 @@ def main():
                     if 'payload_bytes=' not in selected:raise RuntimeError(selected)
                     if int(selected.split('payload_bytes=')[1],16)==a.payload_bytes:break
                 else:raise RuntimeError('Payload selection failed')
+                for _ in range(3):
+                    t.write(bytes([8]))
+                    selected=t.wait(lambda x:x.startswith('WIFI TX bench burst '))
+                    if 'packets=' not in selected:raise RuntimeError(selected)
+                    if int(selected.split('packets=')[1],16)==a.burst:break
+                else:raise RuntimeError('Burst selection failed')
                 t.write(b'<')
                 status=t.wait(lambda x:x.startswith('WIFI TX bench begin status='))
                 if status!='WIFI TX bench begin status=active':raise RuntimeError(status)
