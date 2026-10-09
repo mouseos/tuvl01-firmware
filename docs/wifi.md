@@ -135,6 +135,18 @@ python tools/uart.py ts-dma-fixed --port COMx --log <external-log-path>
 python tools/ts_pattern_verify.py <capture.ts> --fixed-dummy
 ```
 
+内部ループバック診断やSPI分周のprobeから実受信へ戻るときは、
+`tuner-init`と選局を再実行し、`tmcc`のframe lockと`ts-output`の正常なFIFO応答を
+確認してください。SoCのloopback解除・DMA解放だけでは外部チューナーの状態復旧を
+保証しません。probeはチューナー初期化より先に実行します。
+
+```sh
+python tools/uart.py tuner-init --port COMx --log <external-log-path>
+python tools/tune.py --port COMx --profile profiles/uhf-ch19-full.json --log <external-log-path>
+python tools/uart.py tmcc --port COMx --log <external-log-path>
+python tools/uart.py ts-output --port COMx --log <external-log-path>
+```
+
 この固定データはTS形式ではありません。通常のTS検査で出るsyncエラーは期待されるため、
 固定データの全byte照合・UDP sequence/index・到達数で転送の正否を判断します。
 
