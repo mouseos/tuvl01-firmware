@@ -84,17 +84,19 @@ void tuner_quality(void){
     for(unsigned per=0;per<2;per++)for(unsigned layer=0;layer<2;layer++){
         unsigned selector=layer+1,reg=per?0x93:0x90;
         uint8_t selected=per?((saved[5]&0x7c)|0x80|selector):((setting[2]&0xfc)|selector);
-        uint8_t ready_mask=(per?0x10:0x20)>>(2*layer);
+        /* Native full-demodulator reader requires both C3 bits:
+         * BER 7/6, PER A 5/4, PER B 3/2. One bit alone can be stale. */
+        uint8_t ready_mask=per?(0x30>>(2*layer)):0xc0;
         if(tuner_write_register(0x61,reg,selected))goto finish;
         start=xTaskGetTickCount();
         do{
             if(tuner_read_register(0x61,0xc3,&v))goto finish;
-            if(v&ready_mask)break;
+            if((v&ready_mask)==ready_mask)break;
             vTaskDelay(pdMS_TO_TICKS(10));
         }while((TickType_t)(xTaskGetTickCount()-start)<pdMS_TO_TICKS(1000));
         uart_puts(layer?"QUALITY Layer-B":"QUALITY Layer-A");
         uart_puts(per?" PER":" BER");field(" C3=",v);field(" ready_mask=",ready_mask);uart_puts("\n");
-        if(!(v&ready_mask)){result="counter-not-ready";goto finish;}
+        if((v&ready_mask)!=ready_mask){result="counter-not-ready";goto finish;}
         for(unsigned attempt=0;attempt<3;attempt++){
             unsigned mismatch=0;
             for(unsigned n=0;n<5;n++)if(tuner_read_register(0x61,0xc4+n,raw+n))goto finish;

@@ -59,10 +59,19 @@ void unlock(void){regs[1][0x97]=original[1][0x97]=0;}
         for label,count in [('Layer-A BER',1),('Layer-B BER',2),('Layer-A PER',3),('Layer-B PER',4)]:
             self.assertIn(f'QUALITY {label} count={count:08x} denominator=00000064 status=counts-raw',s)
     def test_each_required_ready_bit_is_checked(self):
-        for mask in (0x20,0x08,0x10,0x04):
+        for mask in (0x80,0x40,0x20,0x10,0x08,0x04):
             with self.subTest(mask=mask):
                 s=self.run_measurement(ready=0xff^mask,denominator=100)
                 self.assertIn('end status=counter-not-ready',s)
+    def test_layer_flags_without_ber_completion_do_not_publish_stale_counts(self):
+        s=self.run_measurement(ready=0x3f,denominator=100)
+        self.assertEqual(self.lib.selections(),0)
+        self.assertNotIn(' count=',s)
+        self.assertIn('end status=counter-not-ready',s)
+    def test_per_requires_both_flags_not_only_the_low_flag(self):
+        s=self.run_measurement(ready=0xdf,denominator=100)
+        self.assertNotIn('Layer-A PER count=',s)
+        self.assertIn('end status=counter-not-ready',s)
     def test_read_failures_restore_controls(self):
         for nth in range(1,58):
             with self.subTest(nth=nth):
