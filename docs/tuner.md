@@ -17,6 +17,11 @@ python tools/uart.py ts-dma --port COMx --log logs/tuner.bin
 ```
 
 `uhf-ch14-partial.json`は479143kHzのワンセグ設定、`uhf-ch14-full.json`は同channelの全帯域候補設定です。
+`uhf-ch19-full.json`は509143kHzの全帯域候補設定です。受信地域に合うprofileを選択します。
+
+```powershell
+python tools/tune.py --port COMx --profile profiles/uhf-ch19-full.json --log logs/full-ts.bin
+```
 別周波数ではRF値だけでなくPLL/FAD/NCOなどprofile全体の整合性が必要です。
 受信帯域、CRC、範囲とmodeごとのDTV設定をPC側とtarget側で検査します。
 `sequence-complete`は設定処理の完了であり、RF lock・TS品質を保証しません。
