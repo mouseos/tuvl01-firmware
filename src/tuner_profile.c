@@ -35,6 +35,10 @@ void tuner_profile_receive(void){
     uart_puts("TUNE pre-setting B9=");uart_hex(v);uart_puts("\n");
     if(read(0x60,0xd6,&v))goto failed;
     if(!(v&1)){uart_puts("TUNE end status=not-calibrated\n");return;}
+    /* Bank 2 E8 is 0x0f after initialization, which leaves the receiver about
+     * 20 dB less sensitive (measured RSSI and CN); values 0..2 do not. The
+     * stock TS start writes 2 later, so select the same value before tuning. */
+    if(write(0x62,0xe8,2))goto failed;
     /* Establish the UHF base for partial as well as full tuning: calibration
      * leaves bank2:04 at 4, so partial must not depend on a prior full tune.
      * This register's readback semantics remain unknown; an I2C ACK does not

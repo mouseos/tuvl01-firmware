@@ -142,3 +142,21 @@ firmwareへ所有権を渡して受信品質を測定した後、radioのリセ�
 停止後の復帰に失敗する場合があります。`restart-failed`ではWi-Fiを使用できず、完全な電源入れ直しが必要です。
 古いMAC・基板設定・HIFクレジットは無効になるため、続けてWi-Fiを使う前に`mac`を実行してください。
 この診断はプロトコル上の停止を確認します。クロックや電源の実測は行いません。
+
+## 受信感度と診断コマンド
+
+初期化直後は、bank `0x62` のregister `0xE8` が `0x0f` です。この値では、RSSI生値とCNが約20dB悪化することを実測しました。
+`0xE8` が `0`〜`2` のとき感度は正常です。選局時に `2` を書き、TS出力設定と同じ値を先に選択します。
+
+`tuner-reg`は、`0x60`〜`0x62` bankのregisterを1つずつ読み書きする診断です。
+書込みは `0xF0` 未満に限り、書込み後に読み戻します。意味が確認できないregisterを書き換えると、受信が止まることがあります。
+
+```powershell
+python tools/uart.py tuner-reg --reg 62:e8 --port COMx --log <external-log-path>
+python tools/uart.py tuner-reg --reg 62:e8=02 --port COMx --log <external-log-path>
+```
+
+`rf-switch`は、`PB14`と`PB15`の出力状態を読み、許可した状態へ切り替えます。
+`stock`は純正の初期化と同じ`PB14=1`・`PB15=0`、`alt`は`PB15`だけを上げた状態です。
+`inverse`は`PB14=0`・`PB15=1`で、チューナーがI2Cに応答しなくなります。復旧には`tuner-init`が必要です。
+実測では、`alt`にしてもRSSI・CN・PERは変わりませんでした。RFスイッチの制御端子としては確認できていません。

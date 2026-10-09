@@ -182,6 +182,79 @@ void tuner_board_probe(void){
     board_registers();uart_puts("TUNER board preparation end status=configured\n");
     tuner_probe();
 }
+/* Single-register diagnostic for the three MN885521 I2C banks. Four bytes
+ * follow the command: op ('r' or 'w'), bank (0x60..0x62), register, value.
+ * Registers 0xf0 and above (patch memory, reset, bank control) are refused. */
+void tuner_reg_access(void){
+    uint8_t arg[4];unsigned got=0;
+    TickType_t begin=xTaskGetTickCount();
+    uart_puts("REG access start\n");
+    while(got<sizeof arg){
+        int c=uart_getc();
+        if(c>=0)arg[got++]=(uint8_t)c;
+        else{
+            if((TickType_t)(xTaskGetTickCount()-begin)>=pdMS_TO_TICKS(2000)){
+                uart_puts("REG access end status=transport-timeout\n");return;
+            }
+            vTaskDelay(1);
+        }
+    }
+    unsigned bank=arg[1],reg=arg[2];uint8_t before,after;
+    if((arg[0]!='r' && arg[0]!='w') || bank<0x60 || bank>0x62 || (arg[0]=='w' && reg>=0xf0)){
+        uart_puts("REG access end status=rejected\n");return;
+    }
+    if(tuner_read_register(bank,reg,&before)){uart_puts("REG access end status=i2c-failed\n");return;}
+    value("REG bank=",bank);value(" reg=",reg);value(" before=",before);
+    if(arg[0]=='w'){
+        if(tuner_write_register(bank,reg,arg[3]) || tuner_read_register(bank,reg,&after)){
+            uart_puts("\nREG access end status=i2c-failed\n");return;
+        }
+        value(" wrote=",arg[3]);value(" after=",after);
+    }
+    uart_puts("\nREG access end status=done\n");
+}
+/* Diagnostic for the stock board's PB14/PB15 complementary pair.
+ * The pair is driven 1/0 by the stock tuner setup and 0/1 on its sleep path.
+ * Which net reaches which control pin of the RF switch (U5) is unmeasured, so
+ * only these two states are accepted. Pin function and direction must already
+ * be configured by tuner_board_probe(); no other bit or register is changed. */
+#define RFSW_PBDR0 0xfffe3836UL
+#define RFSW_PBIOR0 0xfffe3832UL
+#define RFSW_PBCR3 0xfffe3828UL
+#define RFSW_BITS 0xc000U
+void tuner_rf_switch(void){
+    int mode=-1;
+    TickType_t begin=xTaskGetTickCount();
+    uart_puts("RF switch start\n");
+    while(mode<0){
+        mode=uart_getc();
+        if(mode<0){
+            if((TickType_t)(xTaskGetTickCount()-begin)>=pdMS_TO_TICKS(2000)){
+                uart_puts("RF switch end status=no-argument\n");return;
+            }
+            vTaskDelay(1);
+        }
+    }
+    unsigned dr=R16(RFSW_PBDR0),ior=R16(RFSW_PBIOR0),cr=R16(RFSW_PBCR3);
+    value("RF switch before PBDR0=",dr);value(" PBIOR0=",ior);value(" PBCR3=",cr);
+    uart_puts("\n");
+    if(mode=='r'){uart_puts("RF switch end status=read\n");return;}
+    if(mode!='s' && mode!='i' && mode!='a'){uart_puts("RF switch end status=rejected\n");return;}
+    if((ior&RFSW_BITS)!=RFSW_BITS || (cr&0x3300)){
+        uart_puts("RF switch end status=refused-not-configured\n");return;
+    }
+    /* 's' = stock 1/0 (PB14=1, PB15=0); 'i' = inverse 0/1 (the stock sleep
+     * state: the tuner stops answering on I2C); 'a' = 1/1 (only PB15 raised). */
+    unsigned want=mode=='s'?0x4000U:mode=='i'?0x8000U:0xc000U;
+    R16(RFSW_PBDR0)=(uint16_t)((R16(RFSW_PBDR0)&~RFSW_BITS)|want);
+    unsigned after=R16(RFSW_PBDR0);
+    value("RF switch after PBDR0=",after);uart_puts("\n");
+    if((after&RFSW_BITS)!=want){
+        uart_puts("RF switch end status=verify-failed\n");return;
+    }
+    uart_puts(mode=='s'?"RF switch end status=stock\n":
+              mode=='i'?"RF switch end status=inverse\n":"RF switch end status=alt\n");
+}
 
 static int prepare_bank(unsigned bank){
     uint8_t byte;

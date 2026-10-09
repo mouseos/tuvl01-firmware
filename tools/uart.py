@@ -134,6 +134,11 @@ def main():
     command_arg.choices.append('wifi-idle-quality')
     command_arg.choices.append('wifi-quiet-quality')
     command_arg.choices.append('tuner-switch')
+    command_arg.choices.append('rf-switch')
+    command_arg.choices.append('tuner-reg')
+    p.add_argument('--reg',help='tuner-reg: BANK:REG for a read, BANK:REG=VALUE for a write (hex, bank 60..62, write reg<f0)')
+    p.add_argument('--rf-switch',choices=['read','stock','inverse','alt'],default='read',
+                   help='PB14/PB15 for rf-switch: read-only, stock 1/0, inverse 0/1 (stops the tuner), or alt 1/1')
     command_arg.choices.extend(['wifi-rx-start','wifi-rx-stop','wifi-rx-stats'])
     a=p.parse_args()
     if a.benchmark_seconds is not None and (a.command!='ts-benchmark' or not 1<=a.benchmark_seconds<=300):
@@ -248,6 +253,26 @@ def main():
                 print(result)
                 if result!='TUNE switch end status=switched':raise RuntimeError(result)
                 t.write(b'i');t.expect('UART application')
+            if a.command=='tuner-reg':
+                m=re.fullmatch(r'([0-9a-fA-F]{2}):([0-9a-fA-F]{2})(?:=([0-9a-fA-F]{2}))?',a.reg or '')
+                if not m:p.error('--reg must be BANK:REG or BANK:REG=VALUE in hex')
+                bank,reg=int(m[1],16),int(m[2],16)
+                if not 0x60<=bank<=0x62 or (m[3] and reg>=0xf0):p.error('register is outside the diagnostic range')
+                t.write(b'i');t.expect('UART application');t.write(bytes([26]));t.expect('REG access start')
+                t.write(bytes([ord('w' if m[3] else 'r'),bank,reg,int(m[3] or '0',16)]))
+                line=t.wait(lambda s:s.startswith('REG bank=') or s.startswith('REG access end status='),10)
+                if line.startswith('REG bank='):
+                    print(line);line=t.wait(lambda s:s.startswith('REG access end status='),10)
+                print(line)
+                t.write(b'i');t.expect('UART application')
+                if line!='REG access end status=done':raise RuntimeError(line)
+            if a.command=='rf-switch':
+                t.write(b'i');t.expect('UART application');t.write(bytes([25]));t.expect('RF switch start')
+                t.write({'read':b'r','stock':b's','inverse':b'i','alt':b'a'}[a.rf_switch])
+                result=t.wait(lambda s:s.startswith('RF switch end status='),10)
+                print(result)
+                t.write(b'i');t.expect('UART application')
+                if result not in ('RF switch end status=read','RF switch end status='+a.rf_switch):raise RuntimeError(result)
             if a.command=='wifi-quiet-quality':
                 t.write(b'i');t.expect('UART application');t.write(bytes([24]))
                 result=t.wait(lambda s:s.startswith('WIFI quiet sample end status='),90)
