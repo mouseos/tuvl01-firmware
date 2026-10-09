@@ -239,6 +239,19 @@ void tuner_rf_switch(void){
     value("RF switch before PBDR0=",dr);value(" PBIOR0=",ior);value(" PBCR3=",cr);
     uart_puts("\n");
     if(mode=='r'){uart_puts("RF switch end status=read\n");return;}
+    if(mode=='l' || mode=='h'){
+        /* PB16 only (PBDR1 bit 0): High in the stock tuner setup, Low on the
+         * stock sleep path. Only an already configured output is changed. */
+        unsigned d1=R16(0xfffe3834UL),i1=R16(0xfffe3830UL),c4=R16(0xfffe3826UL);
+        value("RF switch PB16 before PBDR1=",d1);value(" PBIOR1=",i1);value(" PBCR4=",c4);uart_puts("\n");
+        if(!(i1&1) || (c4&3)){uart_puts("RF switch end status=refused-not-configured\n");return;}
+        R16(0xfffe3834UL)=(uint16_t)((R16(0xfffe3834UL)&~1U)|(mode=='h'?1U:0U));
+        unsigned a1=R16(0xfffe3834UL);
+        value("RF switch PB16 after PBDR1=",a1);uart_puts("\n");
+        if((a1&1U)!=(mode=='h'?1U:0U)){uart_puts("RF switch end status=verify-failed\n");return;}
+        uart_puts(mode=='h'?"RF switch end status=pb16-high\n":"RF switch end status=pb16-low\n");
+        return;
+    }
     if(mode!='s' && mode!='i' && mode!='a'){uart_puts("RF switch end status=rejected\n");return;}
     if((ior&RFSW_BITS)!=RFSW_BITS || (cr&0x3300)){
         uart_puts("RF switch end status=refused-not-configured\n");return;

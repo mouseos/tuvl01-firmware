@@ -137,7 +137,7 @@ def main():
     command_arg.choices.append('rf-switch')
     command_arg.choices.append('tuner-reg')
     p.add_argument('--reg',help='tuner-reg: BANK:REG for a read, BANK:REG=VALUE for a write (hex, bank 60..62, write reg<f0)')
-    p.add_argument('--rf-switch',choices=['read','stock','inverse','alt'],default='read',
+    p.add_argument('--rf-switch',choices=['read','stock','inverse','alt','pb16-low','pb16-high'],default='read',
                    help='PB14/PB15 for rf-switch: read-only, stock 1/0, inverse 0/1 (stops the tuner), or alt 1/1')
     command_arg.choices.extend(['wifi-rx-start','wifi-rx-stop','wifi-rx-stats'])
     a=p.parse_args()
@@ -268,7 +268,7 @@ def main():
                 if line!='REG access end status=done':raise RuntimeError(line)
             if a.command=='rf-switch':
                 t.write(b'i');t.expect('UART application');t.write(bytes([25]));t.expect('RF switch start')
-                t.write({'read':b'r','stock':b's','inverse':b'i','alt':b'a'}[a.rf_switch])
+                t.write({'read':b'r','stock':b's','inverse':b'i','alt':b'a','pb16-low':b'l','pb16-high':b'h'}[a.rf_switch])
                 result=t.wait(lambda s:s.startswith('RF switch end status='),10)
                 print(result)
                 t.write(b'i');t.expect('UART application')
