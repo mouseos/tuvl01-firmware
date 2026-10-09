@@ -6,6 +6,15 @@ PSEQは同梱binaryを使用します。[同梱データ](../firmware/NOTICE.md)
 
 ## 初期化・選局
 
+選局済みUHFのpartial/fullは、`tuner-switch`で同じRF設定のまま切り替えられます。
+Wi-Fi通信・TS転送を停止して実行してください。対象外モード・未校正・通信中は拒否します。
+設定を読み戻し、IRQマスクを復元します。失敗時は元のモードへの復帰を試みます。
+`switched`は設定変更の確認であり、放送ロックや正常なTSを保証しません。
+
+```powershell
+python tools/uart.py tuner-switch --port COMx --log <external-log-path>
+```
+
 application実行後にUARTポートを指定します。
 
 ```powershell

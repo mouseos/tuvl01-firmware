@@ -5,6 +5,7 @@
 #include "sdio.h"
 #include "tuner.h"
 #include "tuner_profile.h"
+#include "tuner_ts.h"
 static int read(unsigned bank,unsigned reg,uint8_t *v){
     if(tuner_read_register(bank,reg,v))return -1;
     uart_puts("TUNE read bank=");uart_hex(bank);uart_puts(" reg=");uart_hex(reg);
@@ -73,4 +74,41 @@ void tuner_profile_receive(void){
     uart_puts("TUNE end status=completion-timeout\n");return;
 failed:
     uart_puts("TUNE end status=i2c-failed\n");
+}
+void tuner_profile_switch(void){
+    if(tuner_ts_stream_active() || sdio_wifi_traffic_active()){
+        uart_puts("TUNE switch end status=refused-active\n");return;
+    }
+    uint8_t calibrated,system,previous,dc,dd,value;
+    const char *result="i2c-failed";
+    if(read(0x60,0xd6,&calibrated) || read(0x62,0xf2,&system) ||
+       read(0x61,0xed,&previous))goto finish;
+    /* Only the established UHF full/partial pair; no arbitrary modes. */
+    if(!(calibrated&1) || system!=4 || (previous!=0x16 && previous!=0x56)){
+        result="refused-mode";goto finish;
+    }
+    if(read(0x61,0xdc,&dc) || read(0x61,0xdd,&dd))goto finish;
+    /* Mask full-demodulator IRQs, then restore the caller's masks.
+     * Never retrigger BA or rewrite RF/PLL registers. */
+    if(write(0x61,0xdc,0) || write(0x61,0xdd,dd&0xf0))goto restore;
+    if(read(0x61,0xdc,&value) || value ||
+       read(0x61,0xdd,&value) || value!=(dd&0xf0))goto restore;
+    if(write(0x61,0xed,previous^0x40))goto rollback;
+    vTaskDelay(pdMS_TO_TICKS(10));
+    if(read(0x61,0xed,&value) || value!=(previous^0x40))goto rollback;
+    uart_puts("TUNE switch selected=");uart_puts(value==0x16?"full\n":"partial\n");
+    result="switched";goto restore;
+rollback:
+    /* A failed write can still reach the chip. Restore and verify ED. */
+    if(write(0x61,0xed,previous))result="restore-failed";
+    vTaskDelay(pdMS_TO_TICKS(10));
+    if(read(0x61,0xed,&value) || value!=previous)result="restore-failed";
+restore:
+    /* Attempt both restores even if the first fails. */
+    if(write(0x61,0xdc,dc))result="restore-failed";
+    if(write(0x61,0xdd,dd))result="restore-failed";
+    if(read(0x61,0xdc,&value) || value!=dc)result="restore-failed";
+    if(read(0x61,0xdd,&value) || value!=dd)result="restore-failed";
+finish:
+    uart_puts("TUNE switch end status=");uart_puts(result);uart_puts("\n");
 }

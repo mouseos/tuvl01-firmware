@@ -11,7 +11,8 @@ class Trigger(unittest.TestCase):
         headers={
             'board.h':'#include <stdint.h>\nvoid uart_puts(const char*);void uart_hex(unsigned);int uart_getc(void);',
             'tuner.h':'int tuner_read_register(unsigned,unsigned,uint8_t*);int tuner_write_register(unsigned,unsigned,uint8_t);',
-            'sdio.h':'void sdio_wifi_poll(void);',
+            'sdio.h':'void sdio_wifi_poll(void);int sdio_wifi_traffic_active(void);',
+            'tuner_ts.h':'int tuner_ts_stream_active(void);',
             'FreeRTOS.h':'typedef unsigned TickType_t;\n#define pdMS_TO_TICKS(x) (x)',
             'task.h':'TickType_t xTaskGetTickCount(void);void vTaskDelay(TickType_t);'}
         for name,text in headers.items():(p/name).write_text(text)
@@ -21,6 +22,7 @@ static uint8_t input[32],regs[3][256];static unsigned pos,tick,reads,writes,read
 void uart_puts(const char*s){unsigned at=strlen(output),n=strlen(s);if(n>sizeof output-at-1)n=sizeof output-at-1;memcpy(output+at,s,n);output[at+n]=0;}void uart_hex(unsigned n){(void)n;}
 int uart_getc(void){return pos<32?input[pos++]:-1;}
 unsigned xTaskGetTickCount(void){return tick++;}void vTaskDelay(unsigned n){tick+=n;}void sdio_wifi_poll(void){}
+int sdio_wifi_traffic_active(void){return 0;}int tuner_ts_stream_active(void){return 0;}
 int tuner_read_register(unsigned bank,unsigned reg,uint8_t*v){
  if(bank==0x60 && reg==0xba){reads++;if(readfail)return -1;}
  *v=regs[bank-0x60][reg];return 0;

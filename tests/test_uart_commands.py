@@ -6,6 +6,11 @@ sys.path.insert(0,str(pathlib.Path(__file__).resolve().parents[1]/'tools'))
 import uart
 
 class Commands(unittest.TestCase):
+    def test_tuner_switch_requires_success_and_closes_serial(self):
+        for status in ('switched','i2c-failed','restore-failed','refused-mode','refused-active'):
+            t,error=self.invoke('tuner-switch','TUNE switch end status='+status)
+            self.assertEqual([c.args[0] for c in t.write.call_args_list[:2]],[b'i',bytes([22])])
+            self.assertEqual(error is None,status=='switched');t.ser.close.assert_called_once()
     def test_idle_quality_requires_restoration_and_closes_serial(self):
         for status in ('restored','failed','wake-failed','refused-active','refused-state',
                        'refused-clock','refused-ownership','refused-handoff'):

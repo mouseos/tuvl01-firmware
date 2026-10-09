@@ -132,6 +132,7 @@ def main():
     command_arg.choices.append('ts-state')
     command_arg.choices.append('wifi-clock-profile')
     command_arg.choices.append('wifi-idle-quality')
+    command_arg.choices.append('tuner-switch')
     command_arg.choices.extend(['wifi-rx-start','wifi-rx-stop','wifi-rx-stats'])
     a=p.parse_args()
     if a.benchmark_seconds is not None and (a.command!='ts-benchmark' or not 1<=a.benchmark_seconds<=300):
@@ -240,6 +241,12 @@ def main():
                 if a.command=='wifi-stats':
                     # Drain any additional diagnostics before closing the port.
                     t.write(b'i');t.expect('UART application')
+            if a.command=='tuner-switch':
+                t.write(b'i');t.expect('UART application');t.write(bytes([22]))
+                result=t.wait(lambda s:s.startswith('TUNE switch end status='),20)
+                print(result)
+                if result!='TUNE switch end status=switched':raise RuntimeError(result)
+                t.write(b'i');t.expect('UART application')
             if a.command=='wifi-idle-quality':
                 t.write(b'i');t.expect('UART application');t.write(bytes([21]))
                 result=t.wait(lambda s:s.startswith('WIFI idle sample end status='),25)

@@ -11,6 +11,10 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
 class AppDispatch(unittest.TestCase):
+    def test_tuner_switch_does_not_stop_active_transfers(self):
+        self.assertEqual(self.route(22),{'tuner_profile_switch':1})
+        self.c.clear();self.c.pre_dispatch(22)
+        self.assertFalse(any(self.c.count(n) for n in range(len(self.names))))
     def test_idle_sample_does_not_stop_active_transfers(self):
         self.assertEqual(self.route(21),{'sdio_wifi_idle_sample':1})
         self.c.clear();self.c.pre_dispatch(21)

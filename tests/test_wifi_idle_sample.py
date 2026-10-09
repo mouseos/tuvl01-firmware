@@ -2,10 +2,17 @@
 import ctypes,pathlib,subprocess,tempfile,unittest
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 class IdleSample(unittest.TestCase):
+    def test_shared_traffic_guard_covers_every_owner_without_io(self):
+        for bit in range(14):
+            self.c.setup(1<<bit,3,0x100,0,0,0,0)
+            self.assertTrue(self.c.sdio_wifi_traffic_active())
+            self.assertEqual(sum(self.c.metric(n) for n in (0,1,2,3)),0)
+        self.c.setup(0,3,0x100,0,0,0,0)
+        self.assertFalse(self.c.sdio_wifi_traffic_active())
     @classmethod
     def setUpClass(cls):
         src=(ROOT/'src/sdio.c').read_text()
-        function=src[src.index('void sdio_wifi_idle_sample('):src.index('void sdio_wifi_clock_profile(')]
+        function=src[src.index('int sdio_wifi_traffic_active('):src.index('void sdio_wifi_clock_profile(')]
         cls.tmp=tempfile.TemporaryDirectory();p=pathlib.Path(cls.tmp.name)
         flags=['wifi_ap_active','wifi_peer_state','wifi_peer_activate_pending','wifi_management_pending',
                'wifi_data_count','wifi_bench_active','wifi_sink_active','wifi_scan_active','wifi_scan_unresolved',

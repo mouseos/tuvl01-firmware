@@ -2613,6 +2613,12 @@ void sdio_wifi_clock(void){
 failed:
     uart_puts("WIFI normal clock end status=failed\n");
 }
+int sdio_wifi_traffic_active(void){
+    return wifi_ap_active || wifi_peer_state || wifi_peer_activate_pending ||
+           wifi_management_pending || wifi_data_count || wifi_bench_active || wifi_sink_active ||
+           wifi_scan_active || wifi_scan_unresolved || wifi_feedback.pending || wifi_bench_io.active ||
+           tuner_ts_stream_active() || wifi_ais_retained_active || wifi_connection_unresolved;
+}
 void sdio_wifi_idle_sample(void (*sample)(void)){
     if(wifi_ap_active || wifi_peer_state || wifi_peer_activate_pending ||
        wifi_management_pending || wifi_data_count || wifi_bench_active || wifi_sink_active ||

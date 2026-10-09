@@ -5,4 +5,5 @@
 /* Fixed 32-byte, CRC-protected protocol. No arbitrary register addresses. */
 int tuner_profile_valid(const uint8_t *data);
 void tuner_profile_receive(void);
+void tuner_profile_switch(void);
 #endif
