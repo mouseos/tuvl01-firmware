@@ -106,6 +106,10 @@ TX試験のUARTログには`WIFI TX bench timing`を出力します。
 複数件送信では`kind=1`を記録しません。`overflow`が非ゼロの統計は平均値に使わないでください。
 
 `tools/uart.py --help`に全commandを列挙しています。
+通常の省電力通知は`wifi-stats`の`WIFI power`に集計します。
+通知ごとのUART出力は`wifi-verbose`で切り替えます。詳細出力は転送速度に影響します。
+不正形式や別network/stationの省電力通知は通常モードでも出力します。
+
 `wifi-stats`、`wifi-nic-stats`、`wifi-station-stats`、`wifi-link`は状態確認、
 `scan`は受信scan、`wifi-rx-*`は受信診断です。
 rate・HT・channel・queue・TX window・polling関連commandは実験用設定です。

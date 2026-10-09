@@ -937,10 +937,16 @@ static int event_read(uint8_t *packet,unsigned capacity,unsigned *length){
         return 1;
     }
     /* Power observations never grant HIF credits or alter TX scheduling. */
+    int power_observation=0;
     if(wifi_ap_active && (packet[4]==0x19 || packet[4]==0x1a || packet[4]==0x1e))
-        wifi_power_events_observe(&wifi_power,packet,stated,1,0);
-    field("WIFI event length=",stated);field(" type=",type);
-    field(" id=",packet[4]);field(" sequence=",packet[5]);uart_puts("\n");
+        power_observation=wifi_power_events_observe(&wifi_power,packet,stated,1,0);
+    /* Normal power notifications can arrive per frame. Keep their counters,
+     * but avoid blocking the transport on UART output unless requested.
+     * Malformed or foreign notifications remain visible. */
+    if(wifi_verbose || power_observation!=1){
+        field("WIFI event length=",stated);field(" type=",type);
+        field(" id=",packet[4]);field(" sequence=",packet[5]);uart_puts("\n");
+    }
     if(packet[4]==0x18 && stated>=20){
         field("WIFI channel event network=",packet[8]);field(" token=",packet[9]);
         field(" status=",packet[10]);field(" channel=",packet[11]);
