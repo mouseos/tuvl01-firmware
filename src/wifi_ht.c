@@ -48,7 +48,7 @@ int wifi_ht_station(uint8_t *out,unsigned length,const struct wifi_ht_peer *peer
     out[26]=peer->qos!=0;out[27]=0; /* UAPSD deliberately not advertised */
     for(unsigned i=29;i<=40;i++)out[i]=0;
     if(wifi_ht_active(peer)){
-        out[21]|=8;out[29]=peer->mcs;out[31]=peer->ampdu;
+        out[21]|=WIFI_PHY_HT;out[29]=peer->mcs;out[31]=peer->ampdu;
         /* Only negotiated20MHz long-GI/one-stream capabilities are used. */
         out[32]=peer->capability&0x0c;
     }

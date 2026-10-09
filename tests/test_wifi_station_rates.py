@@ -59,7 +59,7 @@ const uint8_t *result(void){return saved;}
         self.c.reset(0,0,0x3fcf);self.c.enable_ht();self.assertEqual(self.c.update(1,0),0)
         b=C.string_at(self.c.result(),48);self.assertEqual(b[29:41],bytes(12));self.assertEqual(b[26],0)
         self.assertEqual(self.c.update(3,1),0);b=C.string_at(self.c.result(),48)
-        self.assertEqual(b[21],11);self.assertEqual(b[26:28],bytes([1,0]));self.assertEqual(b[29:34],bytes([255,0,27,12,0]))
+        self.assertEqual(b[21],19);self.assertEqual(b[26:28],bytes([1,0]));self.assertEqual(b[29:34],bytes([255,0,27,12,0]))
         self.assertEqual(b[41:43],bytes([137,1]));self.assertEqual(b[8:16],bytes([0,0x21,2,1,2,3,4,5]))
     def test_profile_change_refuses_active_or_retained_peer(self):
         for state in ((1,0,0),(0,1,0),(0,0,1)):

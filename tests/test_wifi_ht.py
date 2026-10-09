@@ -50,7 +50,7 @@ class HT(unittest.TestCase):
         out=(C.c_uint8*48)(*range(48));before=bytes(out);p=Peer(0xffff,0x1b,0x7f,1,1)
         self.assertEqual(self.lib.wifi_ht_station(out,48,C.byref(p)),1);b=bytes(out)
         self.assertEqual(b[:21],before[:21]);self.assertEqual(b[22:26],before[22:26]);self.assertEqual(b[28],before[28]);self.assertEqual(b[41:],before[41:])
-        self.assertEqual(b[21],before[21]|8);self.assertEqual(b[26:28],bytes([1,0]));self.assertEqual(b[29:34],bytes([127,0,27,12,0]));self.assertEqual(b[34:41],bytes(7))
+        self.assertEqual(b[21],before[21]|16);self.assertEqual(b[26:28],bytes([1,0]));self.assertEqual(b[29:34],bytes([127,0,27,12,0]));self.assertEqual(b[34:41],bytes(7))
         for cap in [0,47,49]:
             out=(C.c_uint8*48)(*range(48));self.assertEqual(self.lib.wifi_ht_station(out,cap,C.byref(p)),0);self.assertEqual(bytes(out),before)
     def test_beacon_transport_alignment_preserves_explicit_ie_length(self):

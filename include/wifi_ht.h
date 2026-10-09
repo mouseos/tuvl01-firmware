@@ -2,6 +2,8 @@
 #ifndef WIFI_HT_H
 #define WIFI_HT_H
 #include <stdint.h>
+/* MT5931 PHY bitmap: bit3 is 5GHz OFDM; bit4 selects HT. */
+#define WIFI_PHY_HT 0x10U
 struct wifi_ht_peer {uint16_t capability;uint8_t ampdu,mcs,present,qos;};
 /* Complete bounded IE list; malformed/duplicate capability leaves out intact. */
 int wifi_ht_parse(const uint8_t *ies,unsigned length,struct wifi_ht_peer *out);

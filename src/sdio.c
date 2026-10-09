@@ -1883,7 +1883,7 @@ void sdio_wifi_ap(void){
     bss[72]=1;bss[73]=1;bss[74]=wifi_ap_channel;bss[86]=1;bss[87]=0x72;
     uint8_t queues[52];
     if(wifi_ht_enabled){
-        bss[50]=1;bss[62]|=8;bss[77]=3;bss[82]=3;
+        bss[50]=1;bss[62]|=WIFI_PHY_HT;bss[77]=3;bss[82]=3;
         uint8_t ampdu[12]={0},reject[12]={0};reject[8]=1;
         if(control_set(0x23,ampdu,sizeof ampdu) || control_set(0x24,reject,sizeof reject))goto failed;
         uart_puts("WIFI HT aggregation disabled; RX ADDBA rejection transferred\n");
