@@ -113,6 +113,14 @@ TX試験のUARTログには`WIFI TX bench timing`を出力します。
 通知ごとのUART出力は`wifi-verbose`で切り替えます。詳細出力は転送速度に影響します。
 不正形式や別network/stationの省電力通知は通常モードでも出力します。
 
+`ts-state`は初期化済み・停止中のSPI/DMAレジスタとTS設定を表示します。
+SPIコマンド、SPDRアクセス、FIFOリセットは行いません。ストリーム実行中、
+DMA実行中、SPI未初期化の場合は拒否します。
+
+```sh
+python tools/uart.py ts-state --port COMx --log <external-log-path>
+```
+
 `wifi-stats`、`wifi-nic-stats`、`wifi-station-stats`、`wifi-link`は状態確認、
 `scan`は受信scan、`wifi-rx-*`は受信診断です。
 rate・HT・channel・queue・TX window・polling関連commandは実験用設定です。

@@ -6,6 +6,11 @@ sys.path.insert(0,str(pathlib.Path(__file__).resolve().parents[1]/'tools'))
 import uart
 
 class Commands(unittest.TestCase):
+    def test_idle_ts_state_command_and_refusals_close_transport(self):
+        for status in ('read','refused-active','refused-uninitialized'):
+            t,error=self.invoke('ts-state','TS state end status='+status)
+            self.assertEqual([c.args[0] for c in t.write.call_args_list][:2],[b'i',bytes([18])])
+            self.assertEqual(error is None,status=='read');t.ser.close.assert_called_once()
     def test_dma_source_selection_and_refusal_close_transport(self):
         for status in ('selected','refused-active','refused-dma-state'):
             t,error=self.invoke('ts-dma-source','TS DMA source end status='+status)

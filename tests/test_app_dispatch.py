@@ -11,6 +11,10 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
 class AppDispatch(unittest.TestCase):
+    def test_ts_state_command_does_not_interrupt_stream_or_benchmark(self):
+        self.assertEqual(self.route(18),{'tuner_ts_state':1})
+        self.c.clear();self.c.pre_dispatch(18)
+        self.assertFalse(any(self.c.count(n) for n in range(len(self.names))))
     @classmethod
     def setUpClass(cls):
         app = (ROOT / 'src/app.c').read_text()

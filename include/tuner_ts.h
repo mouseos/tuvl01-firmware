@@ -13,6 +13,7 @@ void tuner_ts_dma_probe(void);
 void tuner_ts_dma_long_probe(void);
 void tuner_ts_clock(void);
 void tuner_ts_clock_max(void);
+void tuner_ts_state(void);
 void tuner_ts_enable(void);
 void tuner_ts_capture(void);
 void tuner_ts_benchmark(void);

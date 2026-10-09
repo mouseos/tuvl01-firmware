@@ -261,6 +261,20 @@ void tuner_ts_clock_max(void){
     if(spi_divider==0)clock_select(previous);
     else{previous=spi_divider;clock_select(0);}
 }
+void tuner_ts_state(void){
+    if(streaming || ts_dma.active){uart_puts("TS state end status=refused-active\n");return;}
+    if(!ready){uart_puts("TS state end status=refused-uninitialized\n");return;}
+    /* Observe idle state only. Do not read SPDR, reset buffers, or issue any
+     * SPI command: these operations would change the condition under test. */
+    registers();
+    field("TS state ready=",ready);field(" dma_verified=",dma_verified);
+    field(" dma_long=",dma_long_verified);field(" pipeline=",stream_pipeline);
+    field(" source=",stream_test_source);field(" divider=",spi_divider);uart_puts("\n");
+    field("TS DMA state STBCR1=",R8(0xfffe0018UL));field(" DMAOR=",DMAOR);
+    field(" DMARS0=",DMARS0);field(" TX_CHCR=",DMA(0,12));field(" RX_CHCR=",DMA(1,12));
+    field(" TX_remaining=",DMA(0,8));field(" RX_remaining=",DMA(1,8));uart_puts("\n");
+    uart_puts("TS state end status=read\n");
+}
 static int status(uint8_t response[5]){
     static const uint8_t command[5]={3,0x10,0,0,0};
     begin();

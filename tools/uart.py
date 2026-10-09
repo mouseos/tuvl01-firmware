@@ -129,6 +129,7 @@ def main():
     command_arg.choices.append('wifi-osc')
     command_arg.choices.append('wifi-tx-power')
     command_arg.choices.append('wifi-tx-ampdu')
+    command_arg.choices.append('ts-state')
     command_arg.choices.extend(['wifi-rx-start','wifi-rx-stop','wifi-rx-stats'])
     a=p.parse_args()
     if a.benchmark_seconds is not None and (a.command!='ts-benchmark' or not 1<=a.benchmark_seconds<=300):
@@ -148,6 +149,12 @@ def main():
     with a.log.open('ab') as log:
         t=Transport(a.port,log)
         try:
+            if a.command=='ts-state':
+                t.write(b'i');t.expect('UART application');t.write(bytes([18]))
+                result=t.wait(lambda s:s.startswith('TS state end status='),10)
+                print(result)
+                if result!='TS state end status=read':raise RuntimeError(result)
+                t.write(b'i');t.expect('UART application')
             if a.command=='wifi-restart':
                 t.write(b'i');t.expect('UART application');t.write(b'|')
                 result=t.wait(lambda s:s.startswith('WIFI restart end status='),60)
