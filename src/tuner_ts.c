@@ -33,6 +33,7 @@ static unsigned stream_pattern_checks,stream_pattern_errors,stream_pattern_first
 static void stream_pipeline_abort(void);
 static void stream_dma_pattern_prepare(void);
 int tuner_ts_stream_active(void){return streaming!=0;}
+unsigned tuner_ts_stream_packet_count(void){return packet_index;}
 void tuner_ts_stream_wifi_ticks(unsigned ticks){if(streaming)stream_poll_ticks+=ticks;}
 static void field(const char *name,unsigned number);
 static void benchmark(unsigned seconds);

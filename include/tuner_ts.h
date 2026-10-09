@@ -27,6 +27,7 @@ void tuner_ts_stream_dma_source(void);
 void tuner_ts_stream_dma_fixed(void);
 void tuner_ts_stream_stop(void);
 int tuner_ts_stream_active(void);
+unsigned tuner_ts_stream_packet_count(void);
 int tuner_ts_stream_aggregate_active(void);
 /* Nonzero only when burst sending progressed without a stall/error. */
 int tuner_ts_stream_poll(void);

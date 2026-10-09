@@ -141,9 +141,11 @@ def main():
     p.add_argument('--ts-seconds',type=float,default=30)
     p.add_argument('--ts-forward-port',type=int,help='Forward actual TS to localhost UDP for a player')
     p.add_argument('--uart-port',default='COM3')
+    p.add_argument('--quality-watch',action='store_true',help='Collect finite read-only tuner quality snapshots during TS transport')
     a=p.parse_args()
     if a.ts_forward_port is not None and (not a.ts_output or not 1024<=a.ts_forward_port<=65535):
         p.error('--ts-forward-port requires --ts-output and port 1024..65535')
+    if a.quality_watch and not a.ts_output:p.error('--quality-watch requires --ts-output')
     if a.ts_output and not a.ts_log:a.ts_log=a.ts_output.with_suffix('.uart.bin')
     if not 1<=a.seconds<=30:p.error('--seconds must be 1..30')
     if not 0<=a.burst<=512 or not 1<=a.window<=8:p.error('Burst/window outside bounds')
@@ -173,7 +175,8 @@ def main():
                 if not result['connected']:raise RuntimeError('Cannot receive TS without association')
                 data_test(a.interface,result,0,a.window,a.mtu,a.payload_size)
                 from ts_receive import receive
-                result['ts']=receive(a.uart_port,a.ts_output,a.ts_log,a.ts_seconds,a.ts_forward_port)
+                kwargs={'quality_watch':True} if a.quality_watch else {}
+                result['ts']=receive(a.uart_port,a.ts_output,a.ts_log,a.ts_seconds,a.ts_forward_port,**kwargs)
             if a.data:
                 if not result['connected']:raise RuntimeError('Cannot test data without association')
                 data_test(a.interface,result,a.burst,a.window,a.mtu,a.payload_size)

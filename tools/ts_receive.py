@@ -35,7 +35,7 @@ class StreamCapture:
         self.data.extend(body)
         if self.on_payload is not None:self.on_payload(body)
 
-def receive(port,output,log_path,seconds,forward_port=None):
+def receive(port,output,log_path,seconds,forward_port=None,quality_watch=False):
     if not 1<=seconds<=300:raise ValueError('seconds must be 1..300')
     if forward_port is not None and not 1024<=forward_port<=65535:
         raise ValueError('forward port must be 1024..65535')
@@ -56,7 +56,10 @@ def receive(port,output,log_path,seconds,forward_port=None):
             udp.setsockopt(socket.SOL_SOCKET,socket.SO_RCVBUF,1048576);udp.bind(('192.168.74.2',4202));udp.settimeout(.25)
             t=Transport(port,log)
             try:
-                t.write(b'i');t.expect('UART application');t.write(b'B')
+                t.write(b'i');t.expect('UART application')
+                if quality_watch:
+                    t.write(bytes([13]));t.expect('QUALITY watch begin status=armed')
+                t.write(b'B')
                 t.expect('TS stream begin status=active')
                 started=time.monotonic();end=started+seconds
                 while time.monotonic()<end:
@@ -71,6 +74,13 @@ def receive(port,output,log_path,seconds,forward_port=None):
                     if m is None:raise ValueError('Invalid target stream summary')
                     stats.update(zip(('target_datagrams','target_packets','target_overrun','target_underrun','target_busy'),map(lambda x:int(x,16),m.groups())))
                     stats['target_end']=t.wait(lambda s:s.startswith('TS stream end status='),10)
+                    if quality_watch:
+                        t.write(bytes([14]));rows=[]
+                        while True:
+                            line=t.wait(lambda s:s.startswith('QUALITY watch '),15)
+                            if line=='QUALITY watch end status=raw':break
+                            rows.append(line)
+                        stats['quality_watch_raw']=rows
                     t.write(b'i');t.expect('UART application')
                     # Target has stopped; collect the queued tail before closing UDP.
                     drain_end=time.monotonic()+2

@@ -16,6 +16,13 @@ class Commands(unittest.TestCase):
             t,error=self.invoke('ts-dma-fixed','TS DMA fixed end status='+status)
             self.assertEqual([c.args[0] for c in t.write.call_args_list],[b'i',bytes([12]),b'i'])
             self.assertEqual(error is None,status=='selected');t.ser.close.assert_called_once()
+    def test_quality_watch_commands_and_refusal(self):
+        t,error=self.invoke('quality-watch','QUALITY watch begin status=armed')
+        self.assertIsNone(error);self.assertEqual(t.write.call_args_list[1].args[0],bytes([13]));t.ser.close.assert_called_once()
+        t,error=self.invoke('quality-watch','QUALITY watch begin status=refused-active')
+        self.assertIsInstance(error,RuntimeError);t.ser.close.assert_called_once()
+        t,error=self.invoke('quality-watch-dump','QUALITY watch end status=raw')
+        self.assertIsNone(error);self.assertEqual(t.write.call_args_list[1].args[0],bytes([14]));t.ser.close.assert_called_once()
     def test_variable_benchmark_frame_duration_and_serial_cleanup(self):
         t,error=self.invoke('ts-benchmark','TS benchmark end status=measured',
                             ['--benchmark-seconds','60'])

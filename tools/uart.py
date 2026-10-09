@@ -106,7 +106,7 @@ def main():
     command_arg.choices.append('wifi-queues')
     command_arg.choices.append('ts-test-source')
     command_arg.choices.append('ts-pipeline')
-    command_arg.choices.extend(['ts-dma-source','ts-dma-fixed'])
+    command_arg.choices.extend(['ts-dma-source','ts-dma-fixed','quality-watch','quality-watch-dump'])
     command_arg.choices.append('wifi-station-stats')
     command_arg.choices.extend(['ts-frame-size','wifi-tx-timing'])
     command_arg.choices.append('wifi-rate-profile')
@@ -394,6 +394,14 @@ def main():
                 result=t.wait(lambda s:s.startswith('WIFI queues end status='),10)
                 print(result);t.write(b'i');t.expect('UART application')
                 if not result.endswith('=selected'):raise RuntimeError('Stop AP before changing queue parameters')
+            if a.command in ('quality-watch','quality-watch-dump'):
+                dump=a.command=='quality-watch-dump'
+                t.write(b'i');t.expect('UART application');t.write(bytes([14 if dump else 13]))
+                if dump:print(t.expect('QUALITY watch end status=raw',15))
+                else:
+                    result=t.wait(lambda s:s.startswith('QUALITY watch begin status='),10);print(result)
+                    if not result.endswith('=armed'):raise RuntimeError('Quality sampler is already active')
+                t.write(b'i');t.expect('UART application')
             if a.command in ('ts-dma-source','ts-dma-fixed'):
                 fixed=a.command=='ts-dma-fixed';prefix='TS DMA fixed' if fixed else 'TS DMA source'
                 t.write(b'i');t.expect('UART application');t.write(bytes([12 if fixed else 11]))

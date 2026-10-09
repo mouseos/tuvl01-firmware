@@ -10,6 +10,7 @@
 #include "tuner_ts.h"
 #include "tuner_profile.h"
 #include "tuner_monitor.h"
+#include "tuner_quality_watch.h"
 #include "tuner_tmcc.h"
 #include "cache.h"
 #include "wifi_wpa_console.h"
@@ -49,8 +50,8 @@ static void usb_task(void *p) {
             if(c<0)vTaskDelay(1);
             continue;
         }
-        if(c>=0 && c!='i' && c!='|')sdio_wifi_tx_bench_stop();
-        if(c>=0 && c!='i' && c!='|' && c!='t' && c!='B' && c!='E' && c!='7' && c!='5' && c!='4' && c!='^')tuner_ts_stream_interrupt();
+        if(c>=0 && c!='i' && c!='|' && c!=13)sdio_wifi_tx_bench_stop();
+        if(c>=0 && c!=13 && c!='i' && c!='|' && c!='t' && c!='B' && c!='E' && c!='7' && c!='5' && c!='4' && c!='^')tuner_ts_stream_interrupt();
         if(c=='u')usb_debug();
         if(c=='g')usb_pin_debug();
         if(c=='d')sdio_identify();
@@ -137,6 +138,8 @@ static void usb_task(void *p) {
         if(c=='y')tuner_monitor();
         if(c=='M')tuner_fec_snapshot();
         if(c=='Q')tuner_quality();
+        if(c==13)tuner_quality_watch_start();
+        if(c==14)tuner_quality_watch_dump();
         if(c=='l')tuner_ts_capture();
         if(c=='B')tuner_ts_stream_start();
         if(c=='E')tuner_ts_stream_stop();
@@ -150,6 +153,7 @@ static void usb_task(void *p) {
         tuner_ts_stream_wifi_ticks((TickType_t)(xTaskGetTickCount()-poll_begin));
         sdio_wifi_service_mark(2);
         int stream_progress=tuner_ts_stream_poll();
+        tuner_quality_watch_poll();
         sdio_wifi_service_mark(3);
         if(c=='i'){uart_puts("UART application\n");wifi_wpa_uart_info();}
         if(c=='f'){audit_active=1;audit_pos=0;audit_crc=UINT32_MAX;}
@@ -205,7 +209,7 @@ void usb_idle(void){
 void firmware_main(void) {
     board_init();
     uart_puts("TUVL01 independent / FreeRTOS 11.1.0 / GNU SH2A BE\n");
-    uart_puts("Application revision=162\n");
+    uart_puts("Application revision=163\n");
     flash_init(); /* Read-only NOR diagnostics; write routines are not referenced. */
     for (unsigned i=0;i<BOARD_VECTOR_COUNT;i++) vectors[i]=fault;
     vectors[33]=port_yield_entry;

@@ -47,14 +47,14 @@ class Capture(unittest.TestCase):
         self.assertEqual(c.next_index,4)
 
 class ReceiverSockets(unittest.TestCase):
-    def run_capture(self,send_error=None):
+    def run_capture(self,send_error=None,quality_watch=False):
         udp=MagicMock();relay=MagicMock()
         udp.__enter__.return_value=udp;relay.__enter__.return_value=relay
         body=b'\x47\x01\x00\x90'+bytes(184)
         udp.recvfrom.side_effect=[(b'TTS1'+struct.pack('!III',0,0,0)+body,('192.168.74.1',4202)),socket.timeout()]
         if send_error:relay.sendto.side_effect=send_error
         t=MagicMock()
-        t.wait.side_effect=['TS stream datagrams=00000001 packets=00000001 overrun=00000000 underrun=00000000 busy=00000000','TS stream end status=stopped']
+        t.wait.side_effect=['TS stream datagrams=00000001 packets=00000001 overrun=00000000 underrun=00000000 busy=00000000','TS stream end status=stopped']+(['QUALITY watch count=00000001 partial_reads=00000000','QUALITY watch sample=00000000 raw=00000074','QUALITY watch end status=raw'] if quality_watch else [])
         with tempfile.TemporaryDirectory() as td:
             out=pathlib.Path(td)/'received.ts'
             with patch('ts_receive.socket.socket',side_effect=[udp,relay]), \
@@ -63,7 +63,7 @@ class ReceiverSockets(unittest.TestCase):
                  contextlib.redirect_stdout(io.StringIO()):
                 if send_error:
                     with self.assertRaises(OSError):receive('test',out,pathlib.Path(td)/'uart.bin',1,1234)
-                else:receive('test',out,pathlib.Path(td)/'uart.bin',1,1234)
+                else:receive('test',out,pathlib.Path(td)/'uart.bin',1,1234,quality_watch)
             saved=out.read_bytes();report=json.loads(out.with_suffix('.ts.json').read_text())
         udp.sendto.assert_not_called()
         relay.sendto.assert_called_once_with(body,('127.0.0.1',1234))
@@ -71,6 +71,9 @@ class ReceiverSockets(unittest.TestCase):
         self.assertEqual(saved,body)
         self.assertEqual(report['unreceived_packets'],0)
         return report
+    def test_quality_watch_saved_after_stream_stops(self):
+        r=self.run_capture(quality_watch=True)
+        self.assertEqual(r['quality_watch_raw'],['QUALITY watch count=00000001 partial_reads=00000000','QUALITY watch sample=00000000 raw=00000074'])
     def test_forwarding_uses_separate_socket(self):
         self.assertEqual(self.run_capture()['forwarded_datagrams'],1)
     def test_forward_failure_stops_target_and_preserves_received_evidence(self):

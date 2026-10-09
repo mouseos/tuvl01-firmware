@@ -165,3 +165,21 @@ aggregateのサンプル枠が満杯でもTS送信は継続します。
 The direct UDP test accepts `--payload-bytes` with 64, 256, 512, 1024, 1332 (default), or 1472 bytes. UART byte 0x07 cycles these sizes while the sender, receive sink, and TS stream are stopped. The PC tool selects and verifies the requested size before starting. Each SDIO write remains 1536 bytes to compare wireless payload lengths with the same host transfer size. Payload size includes the 12-byte sequence header.
 
 Use `--burst 1` (default), `4`, or `8` to limit direct UDP packets submitted per service pass. UART byte 0x08 cycles this limit. Each pass returns after no progress or four elapsed RTOS ticks; an in-progress SDIO transfer retains its existing timeout. Each packet reserves one validated credit, and uncertain writes stop the sender without a refund or retry. These passes send individual SDIO transactions. The PC receiver requests a 1MiB socket buffer and records the buffer size granted by the OS.
+
+### 送信中の受信品質の有限観測
+
+`quality-watch`でread-onlyサンプラを開始します。UART表示を止め、service passごとに
+RIICで1レジスタだけを読み（個々のtransactionは既存のRTOS待機を含む）、1秒以上の間隔で最大16組・30秒以内に終了します。
+`quality-watch-dump`は転送を止めて記録を表示します。正常時はサンプラからUARTを表示しませんが、RIIC失敗時は既存のfailure診断が出ます。
+測定開始は転送を止めません。
+`wifi_connect.py --quality-watch --ts-output ...`では転送直前に開始し、停止後に
+`quality_watch_raw`としてPC統計へ保存します。疑似データ転送にも使えます。
+
+raw配列はbank61の95,97,86,87,89,BF,C0,C1,8B,8E,90,91,92,93,C3,C4,C5,C6,C7,C8です。
+again配列は97,BF,C0,C1,C3,C4,C5,C6,C7,C8の再読出しです。
+changedはraw配列の対応bit、failed_readは1から始まる読出し番号（0は成功）です。
+activeのbit0/bit1は取得開始/終了時のTS送信状態、tx_before/afterは送信packet数です。
+各読出しは既存RIIC timeoutを使い、io_ticksはその占有時間の合計です。
+観測は送信へ負荷を加えるため、実測速度も同時に確認してください。
+設定・resetを書かないため、カウンタの選択条件はrawに記録した現状のままです。
+再読出し一致は原子的なラッチの証拠ではなく、未検証のBER比率やdBへ変換しません。
