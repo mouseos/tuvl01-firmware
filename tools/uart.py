@@ -127,6 +127,7 @@ def main():
     command_arg.choices.append('wifi-rate-mailbox')
     command_arg.choices.append('wifi-auto-per')
     command_arg.choices.append('wifi-osc')
+    command_arg.choices.append('wifi-tx-power')
     command_arg.choices.extend(['wifi-rx-start','wifi-rx-stop','wifi-rx-stats'])
     a=p.parse_args()
     if a.benchmark_seconds is not None and (a.command!='ts-benchmark' or not 1<=a.benchmark_seconds<=300):
@@ -394,6 +395,11 @@ def main():
                 result=t.wait(lambda s:s.startswith('WIFI queues end status='),10)
                 print(result);t.write(b'i');t.expect('UART application')
                 if not result.endswith('=selected'):raise RuntimeError('Stop AP before changing queue parameters')
+            if a.command=='wifi-tx-power':
+                t.write(b'i');t.expect('UART application');t.write(bytes([15]))
+                result=t.wait(lambda s:s.startswith('WIFI TX power end status='),10)
+                print(result);t.write(b'i');t.expect('UART application')
+                if not result.endswith('=transferred'):raise RuntimeError(result)
             if a.command in ('quality-watch','quality-watch-dump'):
                 dump=a.command=='quality-watch-dump'
                 t.write(b'i');t.expect('UART application');t.write(bytes([14 if dump else 13]))

@@ -6,7 +6,7 @@ class Keys(unittest.TestCase):
     def setUpClass(cls):
         source=(ROOT/'src/sdio.c').read_text()
         start=source.index('int sdio_wifi_wpa_key_submit(')
-        body=source[start:source.index('void sdio_wifi_osc(void){',start)]
+        body=source[start:source.index('void sdio_wifi_tx_power(void){',start)]
         harness=r'''
 #include <stdint.h>
 #include <string.h>

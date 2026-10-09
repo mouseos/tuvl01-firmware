@@ -28,6 +28,7 @@ static unsigned card_verified,wifi_hif_ready,wifi_tx_fault;
 static unsigned wifi_mac_valid,wifi_board_sent;
 static unsigned wifi_dpd_attempted,wifi_dpd_transferred;
 static unsigned wifi_osc_attempted;
+static unsigned wifi_tx_power_step;
 static unsigned wifi_per_attempted,wifi_per_transferred,wifi_per_steps;
 static unsigned wifi_sequence,wifi_channel_token;
 static unsigned wifi_tc1_free,wifi_tc2_free,wifi_tc3_free,wifi_tc4_free,wifi_tc5_free;

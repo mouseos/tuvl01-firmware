@@ -35,6 +35,7 @@ static uint32_t wifi_sink_begin,wifi_sink_end;
 #include "wifi_service_timing.h"
 #include "wifi_raw_tx.h"
 #include "wifi_power_events.h"
+#include "wifi_tx_power.h"
 #include "wifi_station.h"
 #include "wifi_ais_beacon.h"
 #include "wifi_scan.h"
@@ -46,6 +47,7 @@ static struct wifi_ais_join wifi_ais_connection;
 static struct wifi_scan_cache wifi_bss_cache;
 #include "wifi_ais_mgmt.h"
 static struct wifi_power_events wifi_power;
+static unsigned wifi_tx_power_step;
 static struct wifi_tx_timing wifi_timing;
 static unsigned wifi_timing_enabled;
 #include "wifi_ts_tx.h"
@@ -543,6 +545,7 @@ void sdio_wifi_restart(void){
     wifi_mac_valid=wifi_board_sent=0;
     wifi_dpd_attempted=wifi_dpd_transferred=0;
     wifi_osc_attempted=0;
+    wifi_tx_power_step=0;
     wifi_per_attempted=wifi_per_transferred=wifi_per_steps=0;
     wifi_sequence=0;wifi_channel_token=1;
     wifi_tc1_free=wifi_tc2_free=wifi_tc3_free=wifi_tc4_free=wifi_tc5_free=0;
@@ -1697,6 +1700,29 @@ int sdio_wifi_wpa_key_submit(const unsigned char *body,unsigned n){
     for(unsigned i=0;i<sizeof command;i++)wipe[i]=0;
     if(result)wifi_connection_unresolved=1;
     return result;
+}
+void sdio_wifi_tx_power(void){
+    if(wifi_ap_active || wifi_peer_state || wifi_peer_activate_pending ||
+       wifi_management_pending || wifi_data_count || tuner_ts_stream_active() ||
+       wifi_ais_retained_active || wifi_connection_unresolved){
+        uart_puts("WIFI TX power end status=refused-active\n");return;
+    }
+    if(!wifi_hif_ready || !wifi_board_sent || wifi_tx_fault || tx_poll() ||
+       wifi_tc1_free!=14 || wifi_tc2_free!=1 || wifi_tc3_free!=1 ||
+       wifi_tc4_free!=4 || wifi_tc5_free!=1){
+        uart_puts("WIFI TX power end status=refused-state\n");return;
+    }
+    unsigned next=(wifi_tx_power_step+1)%3;
+    int offset=next==1?-12:next==2?-24:0;
+    uint8_t packet[40];
+    if(!wifi_tx_power_command(packet,sizeof packet,offset) ||
+       control_set(0x38,packet,sizeof packet)){
+        wifi_connection_unresolved=1;
+        uart_puts("WIFI TX power end status=failed\n");return;
+    }
+    wifi_tx_power_step=next;
+    field("WIFI TX power reduction_half_db=",(unsigned)-offset);
+    uart_puts(" applied=unavailable\nWIFI TX power end status=transferred\n");
 }
 void sdio_wifi_osc(void){
     if(wifi_ap_active || wifi_peer_state || wifi_peer_activate_pending ||

@@ -63,6 +63,16 @@ cleanup未解決の場合はfailure latchで再試行を拒否します。
 
 ## 診断インターフェース
 
+UART byte `0x0f`は、AP・STA・TS転送を停止し、送信creditがすべて戻った状態で
+2.4GHz送信出力の相対補正を−6dB、−12dB、0dBの順に送ります。
+CID `0x38`の32-byte bodyを使い、絶対出力の基板用テーブルは変更しません。
+`reduction_half_db`は補正量の絶対値で、12は−6dB、24は−12dB、0は相対補正解除です。
+`transferred`は命令転送のみを示し、実際のRF出力はreadbackできません。
+起動時には自動送信しません。RAM applicationを再実行してもモジュール側の補正が
+残る可能性があるため、解除時は0への転送をログで確認してください。
+PCからは`python tools/uart.py wifi-tx-power --port COM3 --log <log-path>`で
+一段ずつ切り替えます。指定したログで補正量と転送結果を確認してください。
+
 チューナー・TS処理を使わない片方向UDP速度試験は、AP起動後に実行します。
 送信試験は1,332バイトの既知パターンを10秒送り、PCで内容と欠落を検査します。
 受信試験はPCから指定した速度で送り、application側の到達数を検査します。

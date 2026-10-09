@@ -37,6 +37,7 @@ APP += src/wifi_ais_rsn.c
 APP += src/wifi_ais_join.c
 APP += src/ts_benchmark_protocol.c
 APP += src/tuner_quality_watch.c
+APP += src/wifi_tx_power.c
 HEADERS = $(wildcard include/*.h rtos/port/*.h $(KERNEL)/include/*.h)
 WPA_INPUTS = $(shell python3 tools/wpa_build.py --inputs)
 .PHONY: all clean wifi-app FORCE
