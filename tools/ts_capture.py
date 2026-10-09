@@ -32,11 +32,12 @@ def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--port',required=True);p.add_argument('--log',type=pathlib.Path,required=True)
     p.add_argument('--output',type=pathlib.Path,required=True)
+    p.add_argument('--polling',action='store_true',help='Read finite TS capture without DMA; requires command 0x17 firmware')
     a=p.parse_args();a.log.parent.mkdir(parents=True,exist_ok=True);data=bytearray();summary=None
     with a.log.open('ab') as log:
         t=Transport(a.port,log)
         try:
-            t.write(b'i');t.expect('UART application');t.write(b'l');t.expect('TS capture start')
+            t.write(b'i');t.expect('UART application');t.write(bytes([23]) if a.polling else b'l');t.expect('TS capture start')
             def receive(line):
                 nonlocal summary
                 if line.startswith('TS DATA '):
@@ -52,7 +53,7 @@ def main():
             if m is None:raise ValueError('Invalid capture summary')
             packets,crc,empty,over,under,reserved=map(lambda s:int(s,16),m.groups())
             validate_capture(data,packets,crc)
-            report=dict(end=end,empty_polls=empty,overrun=over,underrun=under,reserved=reserved)
+            report=dict(end=end,requested_reader='polling' if a.polling else 'configured',empty_polls=empty,overrun=over,underrun=under,reserved=reserved)
             report.update(inspect(data) if data else {'packets':0})
             print(json.dumps(report,indent=2))
             a.output.with_suffix(a.output.suffix+'.json').write_text(json.dumps(report,indent=2),encoding='utf-8')

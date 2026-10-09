@@ -41,6 +41,15 @@ python tools/tune.py --port COMx --profile profiles/uhf-ch19-full.json --log log
 TS入力はRSPI1とDMAを使用します。`ts-dma`のloopback成功は放送TSの受信成功とは別です。
 `ts-probe`やcaptureで188B同期、TEI、continuity、FIFO状態を確認します。
 
+有限UART captureは、取得を終えてから最大128パケットをPCへ送ります。
+`--polling`はDMAを使わず同じSPI clockで取得し、終了後に元のDMA設定を戻します。
+このoptionにはUART command `0x17`に対応したfirmwareが必要です。
+連続受信や転送速度の測定には使用しません。
+
+```powershell
+python tools/ts_capture.py --port COMx --log logs/capture.bin --output logs/capture.ts --polling
+```
+
 ## フルセグ用のTS取得設定
 
 全帯域profileでは、初期化・選局・TS出力設定後に次の操作を実行します。

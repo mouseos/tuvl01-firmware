@@ -625,6 +625,14 @@ void tuner_ts_capture(void){
     uart_puts(count?"TS capture end status=data-unverified\n":"TS capture end status=no-data\n");return;
 failed:uart_puts("TS capture end status=failed\n");
 }
+void tuner_ts_capture_poll(void){
+    /* UART task only, after active stream cancellation. Compare the same
+     * finite acquisition without changing the SPI clock or DMA settings. */
+    unsigned previous_dma=dma_verified,previous_long=dma_long_verified;
+    dma_verified=dma_long_verified=0;
+    tuner_ts_capture();
+    dma_verified=previous_dma;dma_long_verified=previous_long;
+}
 void tuner_ts_probe(void){
     uart_puts("TS probe start\n");initialize();registers();
     uint8_t response[5];

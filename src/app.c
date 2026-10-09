@@ -147,6 +147,7 @@ static void usb_task(void *p) {
         if(c==15)sdio_wifi_tx_power();
         if(c==17)sdio_wifi_tx_ampdu();
         if(c=='l')tuner_ts_capture();
+        if(c==23)tuner_ts_capture_poll();
         if(c=='B')tuner_ts_stream_start();
         if(c=='E')tuner_ts_stream_stop();
         if(c=='r')tuner_tmcc_read();
