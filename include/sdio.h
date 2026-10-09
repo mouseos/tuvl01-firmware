@@ -78,6 +78,7 @@ void sdio_wifi_ts_feedback(void);
 void sdio_wifi_tx_timing(void);
 void sdio_wifi_verbose(void);
 void sdio_wifi_clock(void);
+void sdio_wifi_clock_profile(void);
 void sdio_wifi_width(void);
 int sdio_wifi_ts(const unsigned char *data,unsigned count,unsigned sequence,unsigned index,unsigned flags);
 /* Return packets submitted (1..14), zero for credit stall, negative on fault. */

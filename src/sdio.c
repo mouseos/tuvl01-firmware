@@ -2613,6 +2613,34 @@ void sdio_wifi_clock(void){
 failed:
     uart_puts("WIFI normal clock end status=failed\n");
 }
+void sdio_wifi_clock_profile(void){
+    if(wifi_ap_active || wifi_peer_state || wifi_peer_activate_pending ||
+       wifi_management_pending || wifi_data_count || wifi_bench_active || wifi_sink_active ||
+       wifi_scan_active || wifi_scan_unresolved || wifi_feedback.pending || wifi_bench_io.active ||
+       tuner_ts_stream_active() || wifi_ais_retained_active || wifi_connection_unresolved){
+        uart_puts("WIFI clock profile end status=refused-active\n");return;
+    }
+    if(!card_verified || !wifi_hif_ready || wifi_tx_fault){
+        uart_puts("WIFI clock profile end status=refused-state\n");return;
+    }
+    uint16_t previous=S(0x24),selected;uint32_t chip;
+    /* Both complete register values are already used by this board's
+     * identification and normal-clock paths. Never raise the bus clock. */
+    if(previous==0x101)selected=0x180;
+    else if(previous==0x180)selected=0x101;
+    else{uart_puts("WIFI clock profile end status=refused-clock\n");return;}
+    S(0x24)=previous&~0x100;vTaskDelay(1);
+    S(0x24)=selected&~0x100;S(0x24)=selected;vTaskDelay(1);
+    for(unsigned n=0;n<2;n++){
+        if(S(0x24)!=selected || radio_read(0,&chip) || (chip&0xffff)!=0x5931)goto failed;
+    }
+    field("WIFI clock profile previous=",previous);field(" selected=",selected);uart_puts("\n");
+    uart_puts("WIFI clock profile end status=ready\n");return;
+failed:
+    S(0x24)&=~0x100;S(0x24)=previous&~0x100;S(0x24)=previous;vTaskDelay(1);
+    field("WIFI clock profile restored=",S(0x24));uart_puts("\n");
+    uart_puts("WIFI clock profile end status=failed\n");
+}
 void sdio_wifi_width(void){
     uint8_t previous,capability,value;uint32_t chip,current;
     uint16_t option=S(0x28);unsigned count=0,pairs=0;

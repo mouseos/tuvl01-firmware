@@ -130,6 +130,7 @@ def main():
     command_arg.choices.append('wifi-tx-power')
     command_arg.choices.append('wifi-tx-ampdu')
     command_arg.choices.append('ts-state')
+    command_arg.choices.append('wifi-clock-profile')
     command_arg.choices.extend(['wifi-rx-start','wifi-rx-stop','wifi-rx-stats'])
     a=p.parse_args()
     if a.benchmark_seconds is not None and (a.command!='ts-benchmark' or not 1<=a.benchmark_seconds<=300):
@@ -238,6 +239,12 @@ def main():
                 if a.command=='wifi-stats':
                     # Drain any additional diagnostics before closing the port.
                     t.write(b'i');t.expect('UART application')
+            if a.command=='wifi-clock-profile':
+                t.write(b'i');t.expect('UART application');t.write(bytes([20]))
+                result=t.wait(lambda s:s.startswith('WIFI clock profile end status='),20)
+                print(result)
+                if result!='WIFI clock profile end status=ready':raise RuntimeError(result)
+                t.write(b'i');t.expect('UART application')
             if a.command=='wifi-clock':
                 t.write(b'i');t.expect('UART application');t.write(b'k')
                 result=t.wait(lambda s:s.startswith('WIFI normal clock end status='),10)

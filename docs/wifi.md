@@ -121,6 +121,15 @@ DMA実行中、SPI未初期化の場合は拒否します。
 python tools/uart.py ts-state --port COMx --log <external-log-path>
 ```
 
+`wifi-clock-profile`は停止中にSDIOの既存識別用設定`0x0180`と通常設定`0x0101`を
+切り替え、WCIRのchip IDを2回読んで確認します。確認失敗時は前の設定へ戻します。
+AP・STA・scan・送受信・TS転送中、未初期化、未知のclock設定では拒否します。
+識別用設定は低速です。通常のデータ転送には通常設定へ戻してください。
+
+```sh
+python tools/uart.py wifi-clock-profile --port COMx --log <external-log-path>
+```
+
 `wifi-stats`、`wifi-nic-stats`、`wifi-station-stats`、`wifi-link`は状態確認、
 `scan`は受信scan、`wifi-rx-*`は受信診断です。
 rate・HT・channel・queue・TX window・polling関連commandは実験用設定です。

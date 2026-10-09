@@ -50,8 +50,8 @@ static void usb_task(void *p) {
             if(c<0)vTaskDelay(1);
             continue;
         }
-        if(c>=0 && c!='i' && c!='|' && c!=13 && c!=18)sdio_wifi_tx_bench_stop();
-        if(c>=0 && c!=13 && c!=18 && c!='i' && c!='|' && c!='t' && c!='B' && c!='E' && c!='7' && c!='5' && c!='4' && c!='^')tuner_ts_stream_interrupt();
+        if(c>=0 && c!='i' && c!='|' && c!=13 && c!=18 && c!=20)sdio_wifi_tx_bench_stop();
+        if(c>=0 && c!=13 && c!=18 && c!=20 && c!='i' && c!='|' && c!='t' && c!='B' && c!='E' && c!='7' && c!='5' && c!='4' && c!='^')tuner_ts_stream_interrupt();
         if(c=='u')usb_debug();
         if(c=='g')usb_pin_debug();
         if(c=='d')sdio_identify();
@@ -120,6 +120,7 @@ static void usb_task(void *p) {
         if(c=='P')sdio_wifi_read_check();
         if(c=='v')sdio_wifi_verbose();
         if(c=='k')sdio_wifi_clock();
+        if(c==20)sdio_wifi_clock_profile();
         if(c=='W')sdio_wifi_width();
         if(c=='e')tuner_probe();
         if(c=='j')tuner_board_probe();
