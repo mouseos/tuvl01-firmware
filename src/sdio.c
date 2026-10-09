@@ -1957,9 +1957,9 @@ int sdio_wifi_ts_pair(const unsigned char *data,unsigned count,unsigned sequence
     static uint8_t packet[3072];
     if(!data || !count || count>14 || sdio_wifi_raw_tx_selected())return -1;
     if(!wifi_ap_active || !wifi_peer_active || wifi_tx_fault)return 0;
-    /* Sample fresh status even when positive-credit reuse is selected.
-     * Aggregation reserves one credit for each contained HIF frame. */
-    if(tx_poll())return -1;
+    /* Reuse only this service loop's validated positive balance, as for
+     * single frames. Each contained HIF frame still reserves one credit. */
+    if(data_credit(wifi_tc1_free))return -1;
     unsigned slots=ts_window_slots();
     if(!slots)return 0;
     if(slots==1 && count>7)count=7;

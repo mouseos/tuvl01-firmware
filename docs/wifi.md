@@ -72,6 +72,14 @@ rate・HT・channel・queue・TX window・polling関連commandは実験用設定
 [発振器の待ち時間設定](wifi-osc.md)は、AP停止中に明示的に送る診断commandです。
 
 
+### 確認済みクレジットの再利用
+
+AP停止中に`wifi-poll-reuse`を切り替え、`selected=00000001`を確認すると、
+同じservice loopで確認した空きクレジットを単一・集約送信の双方で再利用します。
+残数が0なら返却を読み直し、各HIF frameにつき1枠を予約します。既定は無効です。
+`wifi-stats`の`reused`は再利用した回数で、PCへの到達数とは異なります。
+TS開始ログの`aggregate`と`burst`で実際の送信設定を確認してください。
+
 ### TS送信の完了通知
 
 `wifi-ts-feedback`で16datagramごとのTX完了通知要求を切り替えます。

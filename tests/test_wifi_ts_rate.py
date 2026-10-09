@@ -31,7 +31,6 @@ static unsigned wifi_fixed54,wifi_feedback_enabled,wifi_ts_window=14,wifi_window
 static uint8_t wifi_mac[6],wifi_peer[6],saved[3072];
 static struct wifi_tx_feedback wifi_feedback;
 static unsigned saved_length;
-static int tx_poll(void){return 0;}
 static int data_credit(unsigned n){(void)n;return 0;}
 static int extended_write(unsigned a,const uint8_t *p,unsigned n,int inc){
     (void)a;(void)inc;memcpy(saved,p,n);saved_length=n;return 0;

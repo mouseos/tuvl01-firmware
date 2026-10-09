@@ -289,7 +289,8 @@ void tuner_ts_stream_start(void){
     pending=position=sequence=packet_index=stream_over=stream_under=stream_busy=stream_flags=0;
     stream_read_ticks=stream_tx_ticks=stream_poll_ticks=0;
     field("TS stream test_source=",stream_test_source);uart_puts("\n");
-    field("TS stream packets_per_datagram=",stream_frame_packets);uart_puts("\n");
+    field("TS stream packets_per_datagram=",stream_frame_packets);
+    field(" aggregate=",stream_aggregate);field(" burst=",stream_burst);uart_puts("\n");
     streaming=1;uart_puts("TS stream begin status=active\n");
     sdio_wifi_io_start();
 }

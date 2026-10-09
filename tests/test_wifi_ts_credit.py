@@ -7,6 +7,7 @@ class Credit(unittest.TestCase):
         source=(ROOT/'src/sdio.c').read_text()
         start=source.index('static unsigned ts_window_slots(')
         body=source[start:source.index('\nint sdio_wifi_ts(',start)]
+        credit=source[source.index('static int data_credit('):source.index('/* Single SDIO owner only.',source.index('static int data_credit('))]
         harness=r'''
 #include <stdint.h>
 #include <string.h>
@@ -31,7 +32,8 @@ static unsigned wifi_ts_window=14,wifi_window_stalls,wifi_more_data;
 static uint8_t wifi_mac[6],wifi_peer[6];
 static int poll_result,write_result;
 static unsigned polls,writes,packed_count,reserved_at_write;
-static int tx_poll(void){polls++;return poll_result;}
+static unsigned wifi_poll_reuse,wifi_credit_fresh,wifi_reuse_count;
+static int tx_poll(void){polls++;wifi_credit_fresh=!poll_result;return poll_result;}
 static unsigned pack(const uint8_t *d,unsigned n,unsigned s,unsigned i,unsigned f,
     const uint8_t *m,const uint8_t *p,uint8_t *o,unsigned cap,unsigned more){
     packed_count=n;return wifi_ts_tx_pack_forwarding(d,n,s,i,f,m,p,o,cap,more);
@@ -42,9 +44,12 @@ static int extended_write(unsigned a,const uint8_t *p,unsigned n,int inc){
 }
 void reset(unsigned credits,int poll,int write){wifi_ts_window=14;wifi_window_stalls=0;wifi_tx_fault=wifi_data_tx=0;wifi_tc1_free=credits;
     polls=writes=packed_count=reserved_at_write=0;poll_result=poll;write_result=write;
+    wifi_poll_reuse=wifi_credit_fresh=wifi_reuse_count=0;
     wifi_feedback_enabled=wifi_timing_enabled=wifi_fixed54=0;saved_length=0;
     memset(&wifi_feedback,0,sizeof wifi_feedback);wifi_tx_timing_reset(&wifi_timing);}
 void window(unsigned n){wifi_ts_window=n;}
+void cached(unsigned enabled,unsigned fresh){wifi_poll_reuse=enabled;wifi_credit_fresh=fresh;}
+unsigned reused(void){return wifi_reuse_count;}
 int send(unsigned n){static uint8_t d[14*188];return sdio_wifi_ts_pair(d,n,0,0,1);}
 unsigned state(unsigned i){unsigned a[]={wifi_tc1_free,wifi_data_tx,wifi_tx_fault,polls,writes,packed_count,reserved_at_write};return a[i];}
 int sampled(unsigned n,unsigned seq,unsigned fixed){
@@ -59,7 +64,7 @@ unsigned length(void){return saved_length;}
         # Function declaration precedes the wrapper; actual body follows stubs.
         prototype='int sdio_wifi_ts_pair(const unsigned char *,unsigned,unsigned,unsigned,unsigned);\n'
         cls.tmp=tempfile.TemporaryDirectory();p=pathlib.Path(cls.tmp.name)
-        (p/'credit.c').write_text(prototype+harness+body)
+        (p/'credit.c').write_text(prototype+harness+credit+body)
         subprocess.run(['cc','-shared','-fPIC','-Wall','-Wextra','-Werror','-I'+str(ROOT/'include'),str(p/'credit.c'),*[str(ROOT/'src'/n) for n in ['wifi_io_timing.c','wifi_raw_tx.c','wifi_ts_tx.c','wifi_net.c','wifi_tx_feedback.c','wifi_tx_timing.c']],'-o',str(p/'credit.so')],check=True)
         cls.c=ctypes.CDLL(str(p/'credit.so'));cls.c.state.restype=ctypes.c_uint
         cls.c.packet.restype=ctypes.c_void_p
@@ -95,6 +100,34 @@ unsigned length(void){return saved_length;}
         self.assertEqual(self.states(),[12,0,1,1,1,14,12])
         self.assertEqual(self.c.send(14),0)
         self.assertEqual(self.states(),[12,0,1,1,1,14,12])
+    def test_aggregate_reuses_only_validated_positive_credit(self):
+        self.c.reset(14,0,0);self.c.cached(1,1)
+        for remaining in range(12,-1,-2):
+            self.assertEqual(self.c.send(14),14)
+            self.assertEqual(self.c.state(0),remaining)
+        self.assertEqual(self.c.state(3),0)
+        self.assertEqual(self.c.reused(),7)
+        self.assertEqual(self.c.send(14),0)
+        self.assertEqual(self.states()[:5],[0,14,0,1,7])
+    def test_missing_cache_and_disabled_reuse_still_poll(self):
+        for enabled,fresh in [(0,0),(0,1),(1,0)]:
+            self.c.reset(14,-1,0);self.c.cached(enabled,fresh)
+            self.assertEqual(self.c.send(14),-1)
+            self.assertEqual(self.states(),[14,0,0,1,0,0,0])
+    def test_cached_one_credit_and_window_reserve_exactly_once(self):
+        self.c.reset(1,0,0);self.c.cached(1,1)
+        self.assertEqual(self.c.send(14),7)
+        self.assertEqual(self.states(),[0,1,0,0,1,7,0])
+        self.c.reset(14,0,0);self.c.window(1);self.c.cached(1,1)
+        self.assertEqual(self.c.send(14),7)
+        self.assertEqual(self.c.send(14),0)
+        self.assertEqual(self.states(),[13,1,0,0,1,7,13])
+    def test_cached_uncertain_failure_stops_without_refund(self):
+        self.c.reset(14,0,-1);self.c.cached(1,1)
+        self.assertEqual(self.c.send(14),-1)
+        self.assertEqual(self.states(),[12,0,1,0,1,14,12])
+        self.assertEqual(self.c.send(14),0)
+        self.assertEqual(self.states(),[12,0,1,0,1,14,12])
     def test_failed_poll_never_submits(self):
         self.c.reset(14,-1,0);self.assertEqual(self.c.send(14),-1)
         self.assertEqual(self.states(),[14,0,0,1,0,0,0])

@@ -11,7 +11,7 @@ class SourceStart(unittest.TestCase):
 static uint8_t packets[32*188];
 static unsigned streaming,pending,position,sequence,packet_index,stream_flags,stream_over,stream_under,stream_busy;
 static unsigned stream_read_ticks,stream_tx_ticks,stream_poll_ticks,stream_test_source;
-static unsigned stream_frame_packets=7;
+static unsigned stream_frame_packets=7,stream_aggregate,stream_burst;
 static unsigned reads,syncs,fills,bad_read;
 static void sdio_wifi_io_start(void){}
 static void uart_puts(const char *s){(void)s;}
