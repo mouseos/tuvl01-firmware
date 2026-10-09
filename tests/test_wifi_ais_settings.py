@@ -58,7 +58,7 @@ class Settings(unittest.TestCase):
         expected = bytearray(48)
         expected[9] = 0x41; expected[10:16] = AP
         expected[16:26] = bytes.fromhex('230103000003cf3f4f05')
-        expected[28] = 3; expected[41:43] = bytes([137, 1])
+        expected[28] = 2; expected[41:43] = bytes([137, 1])
         self.assertEqual(out.raw, bytes(expected))
 
     def test_ap_client_role_changes_after_association(self):
@@ -69,10 +69,10 @@ class Settings(unittest.TestCase):
         for state in (1, 2):
             c.state = state; c.aid = 0
             self.assertEqual(self.c.wifi_station_pack(out, 48, C.byref(c)), 48)
-            self.assertEqual((out.raw[9], out.raw[28], out.raw[42]), (0x22, state, 0))
+            self.assertEqual((out.raw[9], out.raw[28], out.raw[42]), (0x22, state-1, 0))
         c.network = 0; c.state = 1; c.aid = 0
         self.assertEqual(self.c.wifi_station_pack(out, 48, C.byref(c)), 48)
-        self.assertEqual((out.raw[9], out.raw[28], out.raw[42]), (0x41, 1, 0))
+        self.assertEqual((out.raw[9], out.raw[28], out.raw[42]), (0x41, 0, 0))
 
     def test_invalid_station_preserves_output(self):
         for field, value in [('network', 2), ('aid', 2008), ('aid', 0), ('listen', 0),

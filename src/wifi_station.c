@@ -18,7 +18,8 @@ unsigned wifi_station_pack(uint8_t *out,unsigned capacity,const struct wifi_stat
     p[20]=c->network;p[21]=c->phy;
     p[22]=(uint8_t)c->operational;p[23]=(uint8_t)(c->operational>>8);
     p[24]=(uint8_t)c->basic;p[25]=(uint8_t)(c->basic>>8);
-    p[28]=c->state;p[41]=c->rcpi;p[42]=c->state==3;
+    /* Host class states 1/2/3 are encoded by the radio as 0/1/2. */
+    p[28]=c->state-1;p[41]=c->rcpi;p[42]=c->state==3;
     for(unsigned i=0;i<48;i++)out[i]=p[i];
     return 48;
 }

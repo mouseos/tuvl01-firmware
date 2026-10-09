@@ -46,7 +46,7 @@ unsigned count(void){return calls;}
     def test_actual_fixed_mcs_uses_index_and_ht_selector(self):
         for mode,index in [(1,0),(2,7)]:
             b=self.command(0,mode);self.assertEqual(b[21:26],bytes([16,0,64,0,64]));self.assertEqual(b[29:31],bytes([index,0]))
-            self.assertEqual(b[32]&0x72,0);self.assertEqual(b[26:29],bytes([1,0,3]));self.assertEqual(b[41:43],bytes([123,1]))
+            self.assertEqual(b[32]&0x72,0);self.assertEqual(b[26:29],bytes([1,0,2]));self.assertEqual(b[41:43],bytes([123,1]))
     def test_unnegotiated_or_conflicting_fixed_rate_is_not_sent(self):
         for legacy,mcs,ht,peer in [(1,1,1,255),(0,2,1,1),(0,1,1,128),(0,1,0,255),(0,3,1,255)]:
             self.assertEqual(self.c.station(legacy,mcs,ht,peer),-1);self.assertEqual(self.c.count(),0);self.assertEqual(C.string_at(self.c.result(),48),bytes([90])*48)

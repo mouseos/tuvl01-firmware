@@ -93,8 +93,8 @@ static int control_set(unsigned cid,uint8_t *p,unsigned n){
  }
  if(cid==0x17 && n==48){
   station_writes++;memcpy(saved_station,p,n);
-  if(p[28]==3){if(join_order!=1)return -1;join_order=2;join_events();}
-  return mode==12 || (mode==30 && p[28]==2) || (mode==42 && p[28]==3)?-1:0;
+  if(p[28]==2){if(join_order!=1)return -1;join_order=2;join_events();}
+  return mode==12 || (mode==30 && p[28]==1) || (mode==42 && p[28]==2)?-1:0;
  }
  if(cid==0x16 && n==88){
   bss_writes++;memcpy(saved_bss,p,n);
@@ -369,7 +369,7 @@ const uint8_t *pm_request(void){return saved_pm;}
             self.assertEqual(self.run_auth(mode),[1,1,1,1,1,0,0,5000,7,1,1,1,1,1,1])
             p=C.string_at(self.c.station_request(),48)
             self.assertEqual(p[9],0x41);self.assertEqual(p[10:16],bytes([2,0,0,0,0,1]))
-            self.assertEqual(p[20:26],bytes([0,3,15,0,15,0]));self.assertEqual(p[28],1)
+            self.assertEqual(p[20:26],bytes([0,3,15,0,15,0]));self.assertEqual(p[28],0)
             self.assertEqual(p[41],100);self.assertEqual(p[42],0)
             expected=bytearray(48);expected[:6]=bytes([46,0,20,0xd0,24,0x80])
             expected[11:14]=bytes([0x20,1,5]);expected[16]=0xb0
@@ -414,7 +414,7 @@ const uint8_t *pm_request(void){return saved_pm;}
             self.assertEqual(s[:7], [1,1,1,1,1,0,0])
             self.assertEqual(s[10:13], [1,1,2])
             station = C.string_at(self.c.station_request(), 48)
-            self.assertEqual(station[28], 1)
+            self.assertEqual(station[28], 0)
             self.assertEqual(station[16:18], b'\0\0')
             p = C.string_at(self.c.assoc_request(), self.c.assoc_size())
             n = int.from_bytes(p[:2], 'little')
@@ -455,7 +455,7 @@ const uint8_t *pm_request(void){return saved_pm;}
             self.assertEqual([self.c.join_state(i) for i in range(4)],[2,1,1,3])
             p=C.string_at(self.c.station_request(),48)
             self.assertEqual(p[16:18],b'\x07\x00')
-            self.assertEqual((p[20],p[28],p[42]),(0,3,1))
+            self.assertEqual((p[20],p[28],p[42]),(0,2,1))
             expected=bytearray(20);expected[9:14]=bytes([3,7,0,100,0])
             self.assertEqual(C.string_at(self.c.pm_request(),20),expected)
             self.assertEqual([self.c.cam_state(i) for i in range(3)],[1,1,0])

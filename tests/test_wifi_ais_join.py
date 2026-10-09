@@ -28,7 +28,7 @@ int main(void){
  assert(out[9]==0 && out[56]==0 && out[61]==6 && out[85]==0 && out[86]==1);
  assert(out[52]==0xcf && out[53]==0x3f && out[54]==0x4f && out[55]==5);
  assert(wifi_ais_join_station(&j,out,88)==48);
- assert(out[16]==0x21 && out[17]==3 && out[28]==3 && out[42]==1 && out[20]==0);
+ assert(out[16]==0x21 && out[17]==3 && out[28]==2 && out[42]==1 && out[20]==0);
  memset(out,0xa5,sizeof out);assert(!wifi_ais_join_pm(&j,out,88));
  assert(out[0]==0xa5);wifi_ais_join_watch(&j);assert(!wifi_ais_join_pm(&j,out,88));
  unsigned char beacon[128]={0};unsigned char *p=beacon+12;

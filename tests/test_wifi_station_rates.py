@@ -49,7 +49,7 @@ const uint8_t *result(void){return saved;}
             b=C.string_at(self.c.result(),48)
             self.assertEqual(b[8:16],bytes([0,0x21,2,1,2,3,4,5]))
             self.assertEqual(b[16:26],bytes([1,0,3,0,1,phy])+mask.to_bytes(2,'little')+basic.to_bytes(2,'little'))
-            self.assertEqual(b[28],3);self.assertEqual(b[41:43],bytes([137,1]))
+            self.assertEqual(b[28],2);self.assertEqual(b[41:43],bytes([137,1]))
     def test_fixed54_preserves_literal_verified_word_order_and_refuses_missing_peer_rate(self):
         for profile in (0,1):
             self.c.reset(profile,1,0x3fcf);self.assertEqual(self.c.update(3,1),0)
