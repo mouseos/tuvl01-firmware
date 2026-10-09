@@ -12,10 +12,12 @@ unsigned wifi_ts_tx_pack_forwarding(const uint8_t *data,unsigned count,unsigned 
     while(left){unsigned n=left>7?7:left;total+=(74+n*188+3)&~3U;left-=n;}
     unsigned transfer=(total+4+511)&~511U;
     if(transfer>capacity)return 0;
-    for(unsigned i=0;i<transfer;i++)out[i]=0;
     unsigned offset=0;
     while(count){
         unsigned n=count>7?7:count;
+        /* Payload bytes are overwritten below. Clear only the HIF fields,
+         * frame alignment and trailing terminator/padding. */
+        for(unsigned i=0;i<16;i++)out[offset+i]=0;
         body[0]='T';body[1]='T';body[2]='S';body[3]='1';
         for(unsigned b=0;b<4;b++){
             body[4+b]=sequence>>(24-b*8);body[8+b]=index>>(24-b*8);
@@ -34,9 +36,12 @@ unsigned wifi_ts_tx_pack_forwarding(const uint8_t *data,unsigned count,unsigned 
         /* Linux protocol: MORE_DATA=3 when another same-peer frame remains.
          * PS session stays zero; final frame retains NON_PS + burst end. */
         out[offset+11]=count<=7?0x20:more_data?3:0;
-        offset+=(logical+3)&~3U;
+        unsigned aligned=(logical+3)&~3U;
+        for(unsigned i=logical;i<aligned;i++)out[offset+i]=0;
+        offset+=aligned;
         data+=n*188;count-=n;index+=n;++sequence;flags=0;
     }
+    for(unsigned i=offset;i<transfer;i++)out[i]=0;
     return transfer;
 }
 
