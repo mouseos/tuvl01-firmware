@@ -70,3 +70,19 @@ rate・HT・channel・queue・TX window・polling関連commandは実験用設定
 運用条件を満たさない変更はtarget側で拒否します。設定選択の成功は通信成功や速度向上を保証しません。
 
 [発振器の待ち時間設定](wifi-osc.md)は、AP停止中に明示的に送る診断commandです。
+
+
+### TS送信の完了通知
+
+`wifi-ts-feedback`で16datagramごとのTX完了通知要求を切り替えます。
+単一フレームとaggregateの双方に対応し、通常は無効です。
+
+```sh
+python tools/uart.py wifi-ts-feedback --port COMx --log <external-log-path>
+python tools/uart.py wifi-stats --port COMx --log <external-log-path>
+```
+
+`requested`は要求数、`completed`は受信した通知数、`pending`は未通知数です。
+radio firmwareがdataの通知を返さない場合もあり、通知なしを送信失敗と
+断定しないでください。credit返却は無線送信やPC受信の成功を示しません。
+aggregateのサンプル枠が満杯でもTS送信は継続します。

@@ -9,6 +9,16 @@ class Credit(unittest.TestCase):
         body=source[start:source.index('\nint sdio_wifi_ts(',start)]
         harness=r'''
 #include <stdint.h>
+#include <string.h>
+#include "wifi_ts_tx.h"
+#include "wifi_tx_feedback.h"
+#include "wifi_tx_timing.h"
+static unsigned wifi_feedback_enabled,wifi_timing_enabled;
+static struct wifi_tx_feedback wifi_feedback;
+static struct wifi_tx_timing wifi_timing;
+static uint8_t saved[3072];
+static unsigned saved_length;
+static uint32_t xTaskGetTickCount(void){return 42;}
 #include "wifi_io_timing.h"
 #include "wifi_raw_tx.h"
 static unsigned raw_mode;
@@ -22,28 +32,57 @@ static uint8_t wifi_mac[6],wifi_peer[6];
 static int poll_result,write_result;
 static unsigned polls,writes,packed_count,reserved_at_write;
 static int tx_poll(void){polls++;return poll_result;}
-static unsigned wifi_ts_tx_pack_forwarding(const uint8_t *d,unsigned n,unsigned s,unsigned i,unsigned f,
+static unsigned pack(const uint8_t *d,unsigned n,unsigned s,unsigned i,unsigned f,
     const uint8_t *m,const uint8_t *p,uint8_t *o,unsigned cap,unsigned more){
-    (void)more;(void)d;(void)s;(void)i;(void)f;(void)m;(void)p;(void)o;(void)cap;packed_count=n;return 3072;
+    packed_count=n;return wifi_ts_tx_pack_forwarding(d,n,s,i,f,m,p,o,cap,more);
 }
+#define wifi_ts_tx_pack_forwarding pack
 static int extended_write(unsigned a,const uint8_t *p,unsigned n,int inc){
-    (void)a;(void)p;(void)n;(void)inc;writes++;reserved_at_write=wifi_tc1_free;return write_result;
+    (void)a;(void)inc;memcpy(saved,p,n);saved_length=n;writes++;reserved_at_write=wifi_tc1_free;return write_result;
 }
 void reset(unsigned credits,int poll,int write){wifi_ts_window=14;wifi_window_stalls=0;wifi_tx_fault=wifi_data_tx=0;wifi_tc1_free=credits;
-    polls=writes=packed_count=reserved_at_write=0;poll_result=poll;write_result=write;}
+    polls=writes=packed_count=reserved_at_write=0;poll_result=poll;write_result=write;
+    wifi_feedback_enabled=wifi_timing_enabled=wifi_fixed54=0;saved_length=0;
+    memset(&wifi_feedback,0,sizeof wifi_feedback);wifi_tx_timing_reset(&wifi_timing);}
 void window(unsigned n){wifi_ts_window=n;}
 int send(unsigned n){static uint8_t d[14*188];return sdio_wifi_ts_pair(d,n,0,0,1);}
 unsigned state(unsigned i){unsigned a[]={wifi_tc1_free,wifi_data_tx,wifi_tx_fault,polls,writes,packed_count,reserved_at_write};return a[i];}
+int sampled(unsigned n,unsigned seq,unsigned fixed){
+ static uint8_t d[14*188];wifi_feedback_enabled=wifi_timing_enabled=1;wifi_fixed54=fixed;
+ return sdio_wifi_ts_pair(d,n,seq,0,1);
+}
+void fill_samples(void){memset(wifi_feedback.occupied,1,128);wifi_feedback.pending=128;}
+unsigned feedback(unsigned i){unsigned a[]={wifi_feedback.requested,wifi_feedback.pending,wifi_feedback.cancelled,wifi_feedback.skipped,wifi_timing.sample_packets[0],wifi_feedback.sequence[0]};return a[i];}
+const uint8_t *packet(void){return saved;}
+unsigned length(void){return saved_length;}
 '''
         # Function declaration precedes the wrapper; actual body follows stubs.
         prototype='int sdio_wifi_ts_pair(const unsigned char *,unsigned,unsigned,unsigned,unsigned);\n'
         cls.tmp=tempfile.TemporaryDirectory();p=pathlib.Path(cls.tmp.name)
         (p/'credit.c').write_text(prototype+harness+body)
-        subprocess.run(['cc','-shared','-fPIC','-Wall','-Wextra','-Werror','-I'+str(ROOT/'include'),str(p/'credit.c'),str(ROOT/'src/wifi_io_timing.c'),str(ROOT/'src/wifi_raw_tx.c'),'-o',str(p/'credit.so')],check=True)
+        subprocess.run(['cc','-shared','-fPIC','-Wall','-Wextra','-Werror','-I'+str(ROOT/'include'),str(p/'credit.c'),*[str(ROOT/'src'/n) for n in ['wifi_io_timing.c','wifi_raw_tx.c','wifi_ts_tx.c','wifi_net.c','wifi_tx_feedback.c','wifi_tx_timing.c']],'-o',str(p/'credit.so')],check=True)
         cls.c=ctypes.CDLL(str(p/'credit.so'));cls.c.state.restype=ctypes.c_uint
+        cls.c.packet.restype=ctypes.c_void_p
     @classmethod
     def tearDownClass(cls):cls.tmp.cleanup()
     def states(self):return [self.c.state(i) for i in range(7)]
+    def test_sample_each_frame_and_preserve_rate_flag(self):
+        for sequence,frame,count,recorded in [(0,0,7,0),(15,1,1,16),(0xffffffff,1,1,0)]:
+            for fixed in (0,2):
+                self.c.reset(14,0,0);self.assertEqual(self.c.sampled(8,sequence,fixed),8)
+                wire=ctypes.string_at(self.c.packet(),self.c.length());offset=(int.from_bytes(wire[:2],'little')+3)&~3
+                for f,start in enumerate((0,offset)):
+                    self.assertEqual(wire[start+12],128 if f==frame else 0)
+                    self.assertEqual(wire[start+13],(4 if fixed==2 else 0)|(1 if f==frame else 0))
+                self.assertEqual([self.c.feedback(i) for i in range(6)],[1,1,0,0,count,recorded])
+    def test_failed_aggregate_cancels_sample_without_credit_refund(self):
+        self.c.reset(14,0,-1);self.assertEqual(self.c.sampled(14,0,0),-1)
+        self.assertEqual(self.states()[:3],[12,0,1]);self.assertEqual([self.c.feedback(i) for i in range(5)],[1,0,1,0,0])
+    def test_exhausted_sample_pool_does_not_block_transfer(self):
+        self.c.reset(14,0,0);self.c.fill_samples();self.assertEqual(self.c.sampled(14,0,0),14)
+        wire=ctypes.string_at(self.c.packet(),self.c.length());offset=(int.from_bytes(wire[:2],'little')+3)&~3
+        self.assertEqual(wire[12:14]+wire[offset+12:offset+14],bytes(4))
+        self.assertEqual([self.c.feedback(i) for i in range(4)],[0,128,0,1])
     def test_reserves_two_frames_before_write_and_handles_one_credit(self):
         self.c.reset(14,0,0);self.assertEqual(self.c.send(14),14)
         self.assertEqual(self.states(),[12,2,0,1,1,14,12])

@@ -1977,12 +1977,32 @@ int sdio_wifi_ts_pair(const unsigned char *data,unsigned count,unsigned sequence
             offset+=(logical+3)&~3U;
         }
     }
+    uint8_t feedback_tags[2]={0};
+    if(wifi_feedback_enabled){
+        unsigned offset=0,remaining=count;
+        for(unsigned frame=0;frame<frames;frame++){
+            unsigned frame_count=remaining>7?7:remaining;
+            uint32_t frame_sequence=sequence+frame;
+            if(!(frame_sequence&15U) &&
+               wifi_tx_feedback_reserve(&wifi_feedback,frame_sequence,&feedback_tags[frame])){
+                packet[offset+12]=feedback_tags[frame];packet[offset+13]|=1;
+                if(wifi_timing_enabled)wifi_tx_timing_sample(&wifi_timing,
+                    feedback_tags[frame],frame_count,xTaskGetTickCount());
+            }
+            unsigned logical=packet[offset]|((unsigned)packet[offset+1]<<8);
+            offset+=(logical+3)&~3U;remaining-=frame_count;
+        }
+    }
     wifi_tc1_free-=frames;
     uint32_t io_begin=wifi_io.active?board_time_counts():0;
     int io_result=extended_write(0x28,packet,length,0);
     if(wifi_io.active)wifi_io_record(&wifi_io,WIFI_IO_TS_WRITE,length,io_begin,board_time_counts(),io_result!=0);
     if(io_result){
         /* Write completion is uncertain: do not restore credits or retry. */
+        for(unsigned frame=0;frame<frames;frame++)if(feedback_tags[frame]){
+            wifi_tx_feedback_cancel(&wifi_feedback,feedback_tags[frame]);
+            if(wifi_timing_enabled)wifi_tx_timing_cancel(&wifi_timing,feedback_tags[frame]);
+        }
         wifi_tx_fault=1;return -1;
     }
     wifi_data_tx+=frames;return (int)count;
