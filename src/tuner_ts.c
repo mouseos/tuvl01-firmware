@@ -320,18 +320,18 @@ void tuner_ts_stream_aggregate(void){
     field("TS aggregate selected=",stream_aggregate);uart_puts("\n");
     uart_puts("TS aggregate end status=selected\n");
 }
-void tuner_ts_stream_poll(void){
-    if(!streaming)return;
+int tuner_ts_stream_poll(void){
+    if(!streaming)return 0;
     if(!pending){
         TickType_t before=xTaskGetTickCount();
         int n=stream_test_source?32:read_packets(packets,32,1);
         stream_read_ticks+=(TickType_t)(xTaskGetTickCount()-before);
-        if(!n)return;
+        if(!n)return 0;
         if(n<0){
             if(n==-3)stream_over++;else if(n==-2)stream_under++;
-            else {tuner_ts_stream_stop();uart_puts("TS stream failure=bus-or-reserved\n");return;}
+            else {tuner_ts_stream_stop();uart_puts("TS stream failure=bus-or-reserved\n");return 0;}
             stream_flags|=1;
-            if(synchronize_quiet(1)){tuner_ts_stream_stop();return;}return;
+            if(synchronize_quiet(1)){tuner_ts_stream_stop();return 0;}return 0;
         }
         pending=(unsigned)n;position=0;
     }
@@ -347,12 +347,13 @@ void tuner_ts_stream_poll(void){
             sdio_wifi_ts_pair(packets+position*188,n,sequence,packet_index,stream_flags):
             sdio_wifi_ts(packets+position*188,n,sequence,packet_index,stream_flags);
         stream_tx_ticks+=(TickType_t)(xTaskGetTickCount()-before);
-        if(sent<0){tuner_ts_stream_stop();uart_puts("TS stream failure=wifi-tx\n");return;}
-        if(!sent){stream_busy++;return;}
+        if(sent<0){tuner_ts_stream_stop();uart_puts("TS stream failure=wifi-tx\n");return 0;}
+        if(!sent){stream_busy++;return 0;}
         unsigned accepted=stream_aggregate?(unsigned)sent:n;
         sequence+=(accepted+6)/7;packet_index+=accepted;position+=accepted;stream_flags=0;
-        if(position==pending){pending=position=0;return;}
+        if(position==pending){pending=position=0;return stream_burst!=0;}
     }
+    return stream_burst!=0;
 }
 void tuner_ts_benchmark(void){benchmark(10);}
 static void benchmark(unsigned seconds){

@@ -5,7 +5,7 @@ class Burst(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         source=(ROOT/'src/tuner_ts.c').read_text()
-        start=source.index('void tuner_ts_stream_poll(void){')
+        start=source.index('int tuner_ts_stream_poll(void){')
         body=source[start:source.index('\nvoid tuner_ts_benchmark',start)]
         harness=r'''
 #include <stdint.h>
@@ -52,9 +52,9 @@ unsigned trace(unsigned i,unsigned field){return field==0?sizes[i]:field==1?offs
     def tearDownClass(cls):cls.tmp.cleanup()
     def states(self):return [self.lib.state(i) for i in range(9)]
     def test_default_sends_one_and_burst_stops_at_existing_batch_boundary(self):
-        self.lib.reset(0);self.lib.tuner_ts_stream_poll()
+        self.lib.reset(0);self.assertEqual(self.lib.tuner_ts_stream_poll(),0)
         self.assertEqual(self.states(),[1,1,0,32,7,1,7,0,1])
-        self.lib.reset(1);self.lib.tuner_ts_stream_poll()
+        self.lib.reset(1);self.assertEqual(self.lib.tuner_ts_stream_poll(),1)
         self.assertEqual(self.states(),[5,1,0,0,0,5,32,0,1])
         self.assertEqual([self.lib.trace(i,0) for i in range(5)],[7,7,7,7,4])
     def test_synthetic_source_bypasses_tuner_and_preserves_credit_stall_position(self):
@@ -82,7 +82,7 @@ unsigned trace(unsigned i,unsigned field){return field==0?sizes[i]:field==1?offs
         self.assertEqual([self.lib.trace(i,2) for i in range(6)],[0,1,2,2,3,4])
         self.assertEqual([self.lib.trace(i,4) for i in range(6)],[1,0,0,0,0,0])
     def test_mid_batch_failure_stops_immediately_and_does_not_send_again(self):
-        self.lib.reset(1);self.lib.reply(1,-1);self.lib.tuner_ts_stream_poll()
+        self.lib.reset(1);self.lib.reply(1,-1);self.assertEqual(self.lib.tuner_ts_stream_poll(),0)
         self.assertEqual(self.states(),[2,1,1,0,0,1,7,0,0])
         self.lib.tuner_ts_stream_poll()
         self.assertEqual(self.states(),[2,1,1,0,0,1,7,0,0])
@@ -103,4 +103,9 @@ unsigned trace(unsigned i,unsigned field){return field==0?sizes[i]:field==1?offs
         self.assertEqual(self.states(),[3,1,1,0,0,1,7,1,0])
         self.lib.tuner_ts_stream_poll()
         self.assertEqual(self.states(),[3,1,1,0,0,1,7,1,0])
+    def test_partial_progress_then_credit_stall_requires_service_wait(self):
+        self.lib.reset(1);self.lib.reply(2,0)
+        self.assertEqual(self.lib.tuner_ts_stream_poll(),0)
+        self.assertEqual(self.lib.state(6),14)
+        self.assertEqual(self.lib.tuner_ts_stream_poll(),1)
 if __name__=='__main__':unittest.main()

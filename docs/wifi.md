@@ -98,6 +98,14 @@ AP停止中に`wifi-poll-reuse`を切り替え、`selected=00000001`を確認す
 `wifi-stats`の`reused`は再利用した回数で、PCへの到達数とは異なります。
 TS開始ログの`aggregate`と`burst`で実際の送信設定を確認してください。
 
+### TS送信中のタスク待機
+
+`ts-burst`が有効な場合、送信が進んだ後は次のservice passを続けます。
+各passでUSB・UART・radioを処理し、4ms経過またはcredit待ち・データなし・
+エラーで進まなくなった場合に1tick待機して他のRTOS taskへ実行機会を渡します。
+期限はpass間で確認し、実行中の転送には個別のtimeoutが適用されます。
+通常の単発送信では従来どおり毎pass待機します。
+
 ### TS送信の完了通知
 
 `wifi-ts-feedback`で16datagramごとのTX完了通知要求を切り替えます。

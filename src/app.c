@@ -33,9 +33,13 @@ static void log_task(void *p) {
         xTaskResumeAll();vTaskDelay(1000);
     }
 }
+static int stream_service_wait(TickType_t now,TickType_t slice_start,int progress){
+    return !progress || (TickType_t)(now-slice_start)>=pdMS_TO_TICKS(4);
+}
 static void usb_task(void *p) {
     (void)p;
     usb_init();
+    TickType_t slice_start=xTaskGetTickCount();
     for (;;) {
         sdio_wifi_service_mark(0);
         usb_poll();int c=uart_getc();
@@ -142,7 +146,7 @@ static void usb_task(void *p) {
         sdio_wifi_tx_bench_poll();
         tuner_ts_stream_wifi_ticks((TickType_t)(xTaskGetTickCount()-poll_begin));
         sdio_wifi_service_mark(2);
-        tuner_ts_stream_poll();
+        int stream_progress=tuner_ts_stream_poll();
         sdio_wifi_service_mark(3);
         if(c=='i'){uart_puts("UART application\n");wifi_wpa_uart_info();}
         if(c=='f'){audit_active=1;audit_pos=0;audit_crc=UINT32_MAX;}
@@ -159,7 +163,11 @@ static void usb_task(void *p) {
             }
         }
         sdio_wifi_service_mark(4);
-        vTaskDelay(1);
+        /* Revisit USB/UART and radio service between each TS batch. Yield
+         * on a stall or after four ticks, including tick counter wrap. */
+        if(stream_service_wait(xTaskGetTickCount(),slice_start,stream_progress)){
+            vTaskDelay(1);slice_start=xTaskGetTickCount();
+        }
         sdio_wifi_service_mark(5);
     }
 }
@@ -194,7 +202,7 @@ void usb_idle(void){
 void firmware_main(void) {
     board_init();
     uart_puts("TUVL01 independent / FreeRTOS 11.1.0 / GNU SH2A BE\n");
-    uart_puts("Application revision=158\n");
+    uart_puts("Application revision=159\n");
     flash_init(); /* Read-only NOR diagnostics; write routines are not referenced. */
     for (unsigned i=0;i<BOARD_VECTOR_COUNT;i++) vectors[i]=fault;
     vectors[33]=port_yield_entry;
