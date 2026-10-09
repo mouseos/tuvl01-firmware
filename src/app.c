@@ -141,6 +141,7 @@ static void usb_task(void *p) {
         if(c==13)tuner_quality_watch_start();
         if(c==14)tuner_quality_watch_dump();
         if(c==15)sdio_wifi_tx_power();
+        if(c==17)sdio_wifi_tx_ampdu();
         if(c=='l')tuner_ts_capture();
         if(c=='B')tuner_ts_stream_start();
         if(c=='E')tuner_ts_stream_stop();
@@ -210,7 +211,7 @@ void usb_idle(void){
 void firmware_main(void) {
     board_init();
     uart_puts("TUVL01 independent / FreeRTOS 11.1.0 / GNU SH2A BE\n");
-    uart_puts("Application revision=165\n");
+    uart_puts("Application revision=166\n");
     flash_init(); /* Read-only NOR diagnostics; write routines are not referenced. */
     for (unsigned i=0;i<BOARD_VECTOR_COUNT;i++) vectors[i]=fault;
     vectors[33]=port_yield_entry;

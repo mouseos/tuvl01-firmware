@@ -63,6 +63,13 @@ cleanup未解決の場合はfailure latchで再試行を拒否します。
 
 ## 診断インターフェース
 
+HTを有効にしてAP・転送を停止した状態で、`wifi-tx-ampdu`（UART byte `0x11`）は
+送信AMPDUのenableを0/1で切り替えます。初期値は0です。
+`python tools/uart.py wifi-tx-ampdu --port COM3 --log <log-path>`で操作します。
+CID `0x23`の転送結果とenableを記録し、次のAP起動でも選択値を送ります。
+`transferred`は命令転送のみを示し、実際のaggregationはreadbackできません。
+受信ADDBAの拒否は維持します。HTを無効にする前にAMPDUを0へ戻してください。
+
 TS転送停止時の`TS input`は、SPI/DMAで取得したbatchをWi-Fi転送前に一度だけ検査した
 packet数、sync、TEI、adaptation、CCの集計です。取得中はこの検査からUARTを出しません。
 PCの`ts_receive.py`は対応するJSONへ`target_input`を保存します。

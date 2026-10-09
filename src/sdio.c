@@ -97,6 +97,7 @@ static uint16_t wifi_peer_rates=0x3fcf,wifi_peer_listen=1;
 static unsigned wifi_fixed54,wifi_fixed_mcs;
 static unsigned wifi_rate_profile;
 static unsigned wifi_ht_enabled;
+static unsigned wifi_tx_ampdu_enabled;
 static unsigned wifi_io_enabled;
 static unsigned wifi_raw_tx_mode,wifi_qos_tc=1;
 static struct wifi_io_timing wifi_io;
@@ -130,6 +131,27 @@ static int control_set(unsigned cid,uint8_t *packet,unsigned length);
 static int event_read(uint8_t *packet,unsigned capacity,unsigned *length);
 static uint32_t swap32(uint32_t n){return (n>>24)|((n>>8)&0xff00)|((n<<8)&0xff0000)|(n<<24);}
 static void field(const char *s,uint32_t n){uart_puts(s);uart_hex(n);}
+static int tx_poll(void);
+void sdio_wifi_tx_ampdu(void){
+    if(wifi_ap_active || wifi_peer_state || wifi_peer_activate_pending ||
+       wifi_management_pending || wifi_data_count || wifi_bench_active || wifi_sink_active ||
+       tuner_ts_stream_active() || wifi_ais_retained_active || wifi_connection_unresolved){
+        uart_puts("WIFI TX AMPDU end status=refused-active\n");return;
+    }
+    if(!wifi_ht_enabled || !wifi_hif_ready || !wifi_board_sent || wifi_tx_fault || tx_poll() ||
+       wifi_tc1_free!=14 || wifi_tc2_free!=1 || wifi_tc3_free!=1 ||
+       wifi_tc4_free!=4 || wifi_tc5_free!=1){
+        uart_puts("WIFI TX AMPDU end status=refused-state\n");return;
+    }
+    uint8_t packet[12];unsigned next=wifi_tx_ampdu_enabled^1U;
+    if(!wifi_ht_ampdu_command(packet,sizeof packet,next) || control_set(0x23,packet,sizeof packet)){
+        wifi_connection_unresolved=1;
+        uart_puts("WIFI TX AMPDU end status=failed\n");return;
+    }
+    wifi_tx_ampdu_enabled=next;
+    field("WIFI TX AMPDU enable=",next);uart_puts(" applied=unavailable\n");
+    uart_puts("WIFI TX AMPDU end status=transferred\n");
+}
 static void status(void){
     field(" INFO1=",S(0x1c));field(" INFO2=",S(0x1e));
     field(" CLK=",S(0x24));field(" OPTION=",S(0x28));uart_puts("\n");
@@ -1911,8 +1933,10 @@ void sdio_wifi_ap(void){
     if(wifi_ht_enabled){
         bss[50]=1;bss[62]|=WIFI_PHY_HT;bss[77]=3;bss[82]=3;
         uint8_t ampdu[12]={0},reject[12]={0};reject[8]=1;
-        if(control_set(0x23,ampdu,sizeof ampdu) || control_set(0x24,reject,sizeof reject))goto failed;
-        uart_puts("WIFI HT aggregation disabled; RX ADDBA rejection transferred\n");
+        if(!wifi_ht_ampdu_command(ampdu,sizeof ampdu,wifi_tx_ampdu_enabled) ||
+           control_set(0x23,ampdu,sizeof ampdu) || control_set(0x24,reject,sizeof reject))goto failed;
+        field("WIFI HT TX AMPDU enable=",wifi_tx_ampdu_enabled);
+        uart_puts("; RX ADDBA rejection transferred\n");
     }
     if(!(wifi_ht_enabled?wifi_ht_queues(queues,sizeof queues):wifi_queue_pack(queues,sizeof queues,wifi_queue_mode)) ||
        control_set(0x21,queues,sizeof queues))goto failed;
@@ -2701,6 +2725,7 @@ void sdio_wifi_ht(void){
         uart_puts("WIFI HT end status=refused-active\n");return;
     }
     if(wifi_raw_tx_mode==2 || wifi_fixed_mcs){uart_puts("WIFI HT end status=refused-fixed-mode\n");return;}
+    if(wifi_tx_ampdu_enabled){uart_puts("WIFI HT end status=refused-ampdu-enabled\n");return;}
     wifi_ht_enabled^=1;
     field("WIFI HT selected=",wifi_ht_enabled);uart_puts("\nWIFI HT end status=selected\n");
 }

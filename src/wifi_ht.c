@@ -1,5 +1,10 @@
 /* SPDX-License-Identifier: MIT. Independent bounded protocol serialization. */
 #include "wifi_ht.h"
+int wifi_ht_ampdu_command(uint8_t *out,unsigned capacity,unsigned enabled){
+    if(!out || capacity<12 || enabled>1)return 0;
+    for(unsigned i=0;i<12;i++)out[i]=0;
+    out[8]=(uint8_t)enabled;return 1;
+}
 int wifi_ht_parse(const uint8_t *p,unsigned length,struct wifi_ht_peer *out){
     struct wifi_ht_peer parsed={0};
     if(!out || (!p && length))return 0;

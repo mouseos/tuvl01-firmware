@@ -14,6 +14,8 @@ unsigned wifi_ht_ies(uint8_t *out,unsigned capacity,unsigned channel,unsigned ht
 int wifi_ht_station(uint8_t *command,unsigned length,const struct wifi_ht_peer *peer);
 /* WMM AC parameters agreeing with the advertised IE, prefix8/network1. */
 unsigned wifi_ht_queues(uint8_t *out,unsigned capacity);
+/* CID23 prefix8 + enable byte + three reserved zero bytes. */
+int wifi_ht_ampdu_command(uint8_t *out,unsigned capacity,unsigned enabled);
 /* Beacon command with explicit IE length and zero transport alignment. */
 unsigned wifi_beacon_pack(uint8_t *out,unsigned capacity,const uint8_t *ies,unsigned length);
 #endif
