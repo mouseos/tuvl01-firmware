@@ -57,7 +57,10 @@ void tuner_profile_receive(void){
     vTaskDelay(pdMS_TO_TICKS(20));
     if(read(0x60,0xb9,&v))goto failed;
     uart_puts("TUNE pre-trigger B9=");uart_hex(v);uart_puts("\n");
-    if(write(0x60,0xba,0))goto failed;
+    /* UHF full tuning clears only BA[7:4]; keep BA[3:0]. */
+    if(p[27]==2){
+        if(read(0x60,0xba,&v) || write(0x60,0xba,v&0x0f))goto failed;
+    }else if(write(0x60,0xba,0))goto failed;
     for(unsigned attempt=0;attempt<11;attempt++){
         if(read(0x60,0xb9,&v))goto failed;
         if(v&0x80){
