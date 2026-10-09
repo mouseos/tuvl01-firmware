@@ -112,3 +112,5 @@ python tools/uart.py wifi-stats --port COMx --log <external-log-path>
 radio firmwareがdataの通知を返さない場合もあり、通知なしを送信失敗と
 断定しないでください。credit返却は無線送信やPC受信の成功を示しません。
 aggregateのサンプル枠が満杯でもTS送信は継続します。
+
+The direct UDP test accepts `--payload-bytes` with 64, 256, 512, 1024, 1332 (default), or 1472 bytes. UART byte 0x07 cycles these sizes while the sender, receive sink, and TS stream are stopped. The PC tool selects and verifies the requested size before starting. Each SDIO write remains 1536 bytes to compare wireless payload lengths with the same host transfer size. Payload size includes the 12-byte sequence header.

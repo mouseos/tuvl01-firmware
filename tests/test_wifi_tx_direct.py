@@ -19,7 +19,8 @@ static uint32_t board_time_counts(void){return counts_now;}
 #define R16(a) ((void)(a),4499U)
 static unsigned wifi_bench_active,wifi_bench_sent,wifi_bench_stalls,wifi_bench_failed;
 static uint32_t wifi_bench_begin;
-static uint8_t wifi_bench_body[1332];
+static uint8_t wifi_bench_body[1472];
+static unsigned wifi_bench_size=1332;
 static unsigned wifi_ap_active=1,wifi_peer_activated=1,wifi_tx_fault,wifi_sink_active,stream,raw_mode;
 static unsigned wifi_tc1_free=14,wifi_data_tx,clock_now,window_slots=4,writes,reserved,write_error,poll_error;
 static uint8_t wifi_mac[6]={0,3,0x69,7,0x1d,0x22},wifi_peer[6]={0x6c,0x4c,0xe2,0x0d,0x50,0xd4},saved[1536];
@@ -40,8 +41,9 @@ void state(unsigned mask){
     wifi_sink_active=mask&8;stream=mask&16;raw_mode=mask&32;clock_now=100;
     wifi_tc1_free=14;window_slots=4;writes=reserved=wifi_data_tx=0;
     write_error=poll_error=0;wifi_bench_active=wifi_bench_sent=wifi_bench_failed=0;
-    counts_now=10000;wifi_ts_window=14;
+    counts_now=10000;wifi_ts_window=14;wifi_bench_size=1332;
 }
+unsigned selected(void){return wifi_bench_size;}
 void credits(unsigned n){wifi_tc1_free=n;}
 void window(unsigned n){window_slots=n;}
 void tick(unsigned n){clock_now=n;}
@@ -69,6 +71,24 @@ unsigned timing(unsigned kind,unsigned field){
     @classmethod
     def tearDownClass(cls):cls.tmp.cleanup()
     def values(self):return [self.c.result(i) for i in range(8)]
+    def test_size_cycle_wire_lengths_checksums_and_padding(self):
+        self.c.state(0)
+        for size in (1472,64,256,512,1024,1332):
+            self.c.sdio_wifi_tx_bench_size();self.assertEqual(self.c.selected(),size)
+            self.c.sdio_wifi_tx_bench_start();self.c.sdio_wifi_tx_bench_poll()
+            p=ctypes.string_at(self.c.packet(),1536);logical=16+42+size
+            self.assertEqual(int.from_bytes(p[:2],'little'),logical)
+            f=p[16:logical];u=f[34:]
+            self.assertEqual(checksum(f[14:34]),0)
+            self.assertEqual(checksum(f[26:34]+struct.pack('!BBH',0,17,len(u))+u),0)
+            self.assertEqual(u[8:20],b'TWT1'+struct.pack('!II',0,size))
+            self.assertEqual(u[20:],bytes(i%251 for i in range(12,size)))
+            self.assertEqual(p[logical:],bytes(1536-logical))
+            self.c.sdio_wifi_tx_bench_size();self.assertEqual(self.c.selected(),size)
+            self.c.sdio_wifi_tx_bench_stop();self.c.credits(14)
+        for mask in (8,16):
+            self.c.state(mask);self.c.sdio_wifi_tx_bench_size();self.assertEqual(self.c.selected(),1332)
+
     def test_guards_stall_and_timer_do_not_submit(self):
         for mask in (1,2,4,8,16,32):
             self.c.state(mask);self.c.sdio_wifi_tx_bench_start();self.c.sdio_wifi_tx_bench_poll()
