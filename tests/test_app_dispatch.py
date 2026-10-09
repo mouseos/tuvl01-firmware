@@ -11,6 +11,10 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
 class AppDispatch(unittest.TestCase):
+    def test_idle_sample_does_not_stop_active_transfers(self):
+        self.assertEqual(self.route(21),{'sdio_wifi_idle_sample':1})
+        self.c.clear();self.c.pre_dispatch(21)
+        self.assertFalse(any(self.c.count(n) for n in range(len(self.names))))
     def test_clock_profile_does_not_stop_active_transfers(self):
         self.assertEqual(self.route(20),{'sdio_wifi_clock_profile':1})
         self.c.clear();self.c.pre_dispatch(20)
@@ -32,11 +36,12 @@ class AppDispatch(unittest.TestCase):
         stubs = []
         for index, name in enumerate(names):
             args = {args for called, args in calls if called == name}
-            signature = 'unsigned value' if args != {''} else 'void'
+            signature = ('void (*value)(void)' if args == {'tuner_quality'} else
+                         'unsigned value' if args != {''} else 'void')
             ignore = '(void)value;' if args != {''} else ''
             stubs.append(f'static void {name}({signature})'
                          f'{{{ignore}seen[{index}]++;}}')
-        source = ('static unsigned seen[' + str(len(names)) + '];\n' +
+        source = ('static void tuner_quality(void);\nstatic unsigned seen[' + str(len(names)) + '];\n' +
                   '\n'.join(stubs) + '\nstatic unsigned xTaskGetTickCount(void){return 0;}\nvoid dispatch(int c){' + routes + '}\n' +
                   'void pre_dispatch(int c){' + prelude + '}\n' +
                   'void clear(void){for(unsigned i=0;i<sizeof seen/sizeof seen[0];i++)seen[i]=0;}\n'

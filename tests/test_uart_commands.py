@@ -6,6 +6,12 @@ sys.path.insert(0,str(pathlib.Path(__file__).resolve().parents[1]/'tools'))
 import uart
 
 class Commands(unittest.TestCase):
+    def test_idle_quality_requires_restoration_and_closes_serial(self):
+        for status in ('restored','failed','wake-failed','refused-active','refused-state',
+                       'refused-clock','refused-ownership','refused-handoff'):
+            t,error=self.invoke('wifi-idle-quality','WIFI idle sample end status='+status)
+            self.assertEqual([c.args[0] for c in t.write.call_args_list[:2]],[b'i',bytes([21])])
+            self.assertEqual(error is None,status=='restored');t.ser.close.assert_called_once()
     def test_clock_profile_status_and_serial_cleanup(self):
         for status in ('ready','failed','refused-active','refused-state','refused-clock'):
             t,error=self.invoke('wifi-clock-profile','WIFI clock profile end status='+status)

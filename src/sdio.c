@@ -2613,6 +2613,48 @@ void sdio_wifi_clock(void){
 failed:
     uart_puts("WIFI normal clock end status=failed\n");
 }
+void sdio_wifi_idle_sample(void (*sample)(void)){
+    if(wifi_ap_active || wifi_peer_state || wifi_peer_activate_pending ||
+       wifi_management_pending || wifi_data_count || wifi_bench_active || wifi_sink_active ||
+       wifi_scan_active || wifi_scan_unresolved || wifi_feedback.pending || wifi_bench_io.active ||
+       tuner_ts_stream_active() || wifi_ais_retained_active || wifi_connection_unresolved){
+        uart_puts("WIFI idle sample end status=refused-active\n");return;
+    }
+    if(!sample || !card_verified || !wifi_hif_ready || wifi_tx_fault){
+        uart_puts("WIFI idle sample end status=refused-state\n");return;
+    }
+    if(!(S(0x24)&0x100)){
+        uart_puts("WIFI idle sample end status=refused-clock\n");return;
+    }
+    uint32_t own;const char *result="failed";
+    /* WHLPCR bit8 reads driver ownership; writing bit8 requests FW-own,
+     * bit9 requests driver-own. Do not consume read-clear IRQ status. */
+    if(radio_read(4,&own))goto finish;
+    field("WIFI idle sample before_WHLPCR=",own);uart_puts("\n");
+    if(!(own&0x100)){
+        result="refused-ownership";goto finish;
+    }
+    /* Even a failed write may have reached the device: always reclaim. */
+    if(radio_write(4,0x100))goto reclaim;
+    vTaskDelay(1);
+    if(radio_read(4,&own))goto reclaim;
+    field("WIFI idle sample handoff_WHLPCR=",own);uart_puts("\n");
+    if(own&0x100){result="refused-handoff";goto reclaim;}
+    uart_puts("WIFI idle sample ownership=firmware\n");
+    /* Allow the receiver to settle; this is not proof of physical sleep. */
+    vTaskDelay(pdMS_TO_TICKS(1500));
+    sample();result="restored";
+reclaim:
+    if(radio_write(4,0x200) || radio_wait(4,0x100,0) ||
+       radio_read(4,&own) || !(own&0x100)){
+        wifi_tx_fault=1;wifi_hif_ready=0;
+        result="wake-failed";
+    }else{
+        field("WIFI idle sample restored_WHLPCR=",own);uart_puts("\n");
+    }
+finish:
+    uart_puts("WIFI idle sample end status=");uart_puts(result);uart_puts("\n");
+}
 void sdio_wifi_clock_profile(void){
     if(wifi_ap_active || wifi_peer_state || wifi_peer_activate_pending ||
        wifi_management_pending || wifi_data_count || wifi_bench_active || wifi_sink_active ||

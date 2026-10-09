@@ -121,6 +121,18 @@ DMA実行中、SPI未初期化の場合は拒否します。
 python tools/uart.py ts-state --port COMx --log <external-log-path>
 ```
 
+AP・転送・scanを停止した状態では、`wifi-idle-quality`でFW-ownへ一時的に
+引き渡してチューナーの品質を測り、driver-ownへ戻せます。Wi-Fiの初期化と
+HIF設定（`mac`）が完了している必要があります。コマンドbyteは`0x15`です。
+
+```powershell
+python tools/uart.py wifi-idle-quality --port COMx --log <external-log-path>
+```
+
+`restored`は所有権の復帰を示します。受信品質は記録された`QUALITY`行で確認します。
+所有権の引渡しはモジュールの物理的な睡眠・clock停止を保証しません。
+引渡しが拒否された場合は品質測定を行わず、復帰に失敗した場合はHIF送信を拒否します。
+
 `wifi-clock-profile`は停止中にSDIOの既存識別用設定`0x0180`と通常設定`0x0101`を
 切り替え、WCIRのchip IDを2回読んで確認します。確認失敗時は前の設定へ戻します。
 AP・STA・scan・送受信・TS転送中、未初期化、未知のclock設定では拒否します。
