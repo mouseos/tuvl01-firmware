@@ -305,11 +305,11 @@ int tuner_ts_read(uint8_t *buffer,unsigned max_packets){return read_packets(buff
 void tuner_ts_stream_start(void){
     uint8_t v;uart_puts("TS stream start\n");
     if(streaming){uart_puts("TS stream begin status=refused-active\n");return;}
-    if((stream_test_source==2 || (stream_pipeline && !stream_test_source)) &&
+    if((stream_test_source>=2 || (stream_pipeline && !stream_test_source)) &&
        (!dma_verified || !dma_long_verified || (R32(0xfffc1000UL)&1U))){
         uart_puts("TS stream begin status=refused-dma-state\n");return;
     }
-    if(stream_test_source==2 && !stream_pipeline){
+    if(stream_test_source>=2 && !stream_pipeline){
         uart_puts("TS stream begin status=refused-pipeline-disabled\n");return;
     }
     if(stream_test_source){
@@ -318,7 +318,7 @@ void tuner_ts_stream_start(void){
         uart_puts("TS stream begin status=failed\n");return;
     }
     stream_pipeline_abort();
-    if(stream_test_source==2)stream_dma_pattern_prepare();
+    if(stream_test_source>=2)stream_dma_pattern_prepare();
     pending=position=sequence=packet_index=stream_over=stream_under=stream_busy=stream_flags=0;
     stream_read_ticks=stream_tx_ticks=stream_poll_ticks=0;
     stream_dma_ticks=stream_dma_reads=0;
@@ -362,21 +362,26 @@ static uint8_t pipe_packets[2][TUNER_TS_PACKET*TUNER_TS_MAX_PACKETS] __attribute
 static uint8_t pipe_pattern_tx[TUNER_TS_PACKET*TUNER_TS_MAX_PACKETS] __attribute__((aligned(4)));
 static void stream_dma_pattern_prepare(void){
     ts_pattern_dma_fill(packets,sizeof packets);
+    if(stream_test_source==3)for(unsigned n=0;n<sizeof packets;n++)packets[n]=0xff;
     for(unsigned n=0;n<sizeof packets;n++)pipe_pattern_tx[n]=packets[n]^0xffU;
     initialize();
 }
-void tuner_ts_stream_dma_source(void){
-    if(streaming){uart_puts("TS DMA source end status=refused-active\n");return;}
-    if(stream_test_source!=2 && (!stream_pipeline || !dma_verified || !dma_long_verified || (R32(0xfffc1000UL)&1U))){
-        uart_puts("TS DMA source end status=refused-dma-state\n");return;
+static void stream_dma_source_select(unsigned source,const char *prefix){
+    if(streaming){uart_puts(prefix);uart_puts(" end status=refused-active\n");return;}
+    if(stream_test_source!=source && (!stream_pipeline || !dma_verified || !dma_long_verified || (R32(0xfffc1000UL)&1U))){
+        uart_puts(prefix);uart_puts(" end status=refused-dma-state\n");return;
     }
-    stream_test_source=stream_test_source==2?0:2;
-    field("TS DMA source selected=",stream_test_source);uart_puts("\nTS DMA source end status=selected\n");
+    stream_test_source=stream_test_source==source?0:source;
+    uart_puts(prefix);field(" selected=",stream_test_source);uart_puts("\n");
+    uart_puts(prefix);uart_puts(" end status=selected\n");
 }
+void tuner_ts_stream_dma_source(void){stream_dma_source_select(2,"TS DMA source");}
+void tuner_ts_stream_dma_fixed(void){stream_dma_source_select(3,"TS DMA fixed");}
+
 static unsigned pipe_current=2,pipe_inflight=2,pipe_ready=2,pipe_gap,pipe_flags[2];
 static void stream_pipeline_abort(void){
     if(ts_dma.active)(void)dma_finish(-1,0);
-    if(stream_test_source==2){S(0)=8;S(2)=0x20;}
+    if(stream_test_source>=2){S(0)=8;S(2)=0x20;}
     pipe_current=pipe_inflight=pipe_ready=2;pipe_gap=0;
     pipe_flags[0]=pipe_flags[1]=0;
 }
@@ -389,9 +394,12 @@ void tuner_ts_stream_pipeline(void){
     field("TS pipeline selected=",stream_pipeline);uart_puts("\nTS pipeline end status=selected\n");
 }
 static int pipe_begin(unsigned index){
-    if(stream_test_source==2){
+    if(stream_test_source>=2){
+        static const uint32_t zero;
+        unsigned increment=stream_test_source==2;
+        const uint8_t *tx=increment?pipe_pattern_tx:(const uint8_t *)&zero;
         S(2)=0x21;begin();
-        if(dma_start(pipe_pattern_tx,pipe_packets[index],sizeof pipe_packets[index],1,1))return failure();
+        if(dma_start(tx,pipe_packets[index],sizeof pipe_packets[index],increment,1))return failure();
         pipe_flags[index]=0;pipe_inflight=index;return 1;
     }
     uint8_t response[5],discard;
@@ -414,7 +422,7 @@ static int stream_pipeline_poll(void){
             if(dma_finish(done<0?-1:0,1) || end() || pipe_ready!=2){
                 tuner_ts_stream_stop();uart_puts("TS stream failure=pipeline-dma\n");return 0;
             }
-            if(stream_test_source==2){
+            if(stream_test_source>=2){
                 stream_pattern_checks++;
                 for(unsigned n=0;n<sizeof packets;n++)if(pipe_packets[pipe_inflight][n]!=packets[n]){
                     if(!stream_pattern_errors)stream_pattern_first=n;

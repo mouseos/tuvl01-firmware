@@ -126,6 +126,18 @@ DMAが完了したバッファだけを送信へ渡し、credit待ちで未送�
 python tools/uart.py ts-dma-source --port COMx --log <external-log-path>
 ```
 
+`ts-dma-fixed`は同じguardで固定アドレスのゼロwordをDMA送信し、内部ループバックで
+得た全byteが`0xff`か照合します（`test_source=00000003`）。実受信のdummy TX DMAと
+同じ非増分設定です。再選択で実受信へ戻ります。PC側は次で照合します。
+
+```sh
+python tools/uart.py ts-dma-fixed --port COMx --log <external-log-path>
+python tools/ts_pattern_verify.py <capture.ts> --fixed-dummy
+```
+
+この固定データはTS形式ではありません。通常のTS検査で出るsyncエラーは期待されるため、
+固定データの全byte照合・UDP sequence/index・到達数で転送の正否を判断します。
+
 PCに保存したTSは`python tools/ts_pattern_verify.py <capture.ts>`で
 全byteとバッチ順を検査できます。受信機能・番組・映像の検証にはなりません。
 

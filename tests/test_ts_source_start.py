@@ -75,4 +75,9 @@ void pipeline(unsigned dma,unsigned wide,unsigned cache){stream_pipeline=1;dma_v
     def test_plain_source_selection_from_dma_source_is_valid(self):
         self.lib.reset(2,0,0);self.lib.tuner_ts_stream_test_source()
         self.assertEqual(self.state()[1],1)
+    def test_fixed_source_guard_and_tuner_bypass(self):
+        self.lib.reset(3,0,1);self.lib.tuner_ts_stream_start()
+        self.assertEqual(self.state(),[0,3,0,0,0,17,99])
+        self.lib.reset(3,0,1);self.lib.pipeline(1,1,0);self.lib.tuner_ts_stream_start()
+        self.assertEqual(self.state(),[1,3,0,0,1,0,0])
 if __name__=='__main__':unittest.main()

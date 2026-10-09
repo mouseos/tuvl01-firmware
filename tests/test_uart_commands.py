@@ -11,6 +11,11 @@ class Commands(unittest.TestCase):
             t,error=self.invoke('ts-dma-source','TS DMA source end status='+status)
             self.assertEqual([c.args[0] for c in t.write.call_args_list],[b'i',bytes([11]),b'i'])
             self.assertEqual(error is None,status=='selected');t.ser.close.assert_called_once()
+    def test_fixed_dma_source_command(self):
+        for status in ('selected','refused-active','refused-dma-state'):
+            t,error=self.invoke('ts-dma-fixed','TS DMA fixed end status='+status)
+            self.assertEqual([c.args[0] for c in t.write.call_args_list],[b'i',bytes([12]),b'i'])
+            self.assertEqual(error is None,status=='selected');t.ser.close.assert_called_once()
     def test_variable_benchmark_frame_duration_and_serial_cleanup(self):
         t,error=self.invoke('ts-benchmark','TS benchmark end status=measured',
                             ['--benchmark-seconds','60'])

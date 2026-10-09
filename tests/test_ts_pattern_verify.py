@@ -12,4 +12,8 @@ class Verify(unittest.TestCase):
     def test_empty_and_partial_packet_rejected(self):
         for data in [b'',b'x'*189]:
             with self.assertRaises(ValueError):verify(data)
+    def test_fixed_dummy_all_bytes_compared(self):
+        data=bytearray(b'\xff'*(188*99));self.assertEqual(verify(data,True)['errors'],0)
+        data[199]=0;self.assertEqual(verify(data,True)['errors'],1)
+        self.assertEqual(verify(data,True)['first_offset'],199)
 if __name__=='__main__':unittest.main()

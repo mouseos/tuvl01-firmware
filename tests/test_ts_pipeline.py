@@ -25,15 +25,16 @@ static unsigned stream_pipeline,dma_verified=1,dma_long_verified=1,ccr;
 static struct {unsigned active;TickType_t start;} ts_dma;
 static uint8_t *dma_buffer;
 static int done,fifo=1,send_result=1,corrupt;
+static unsigned tx_increment;
 static unsigned starts,finishes,sends,stops,syncs,violations,tick,generation,recv_flags[64],recv_values[64];
 static TickType_t xTaskGetTickCount(void){return tick++;}
 static void uart_puts(const char *s){(void)s;}
 static void field(const char *s,unsigned n){(void)s;(void)n;}
 static int dma_start(const uint8_t *tx,uint8_t *rx,unsigned n,unsigned inc,unsigned wide){
- (void)tx;(void)n;(void)inc;(void)wide;if(ts_dma.active)return -1;
+ (void)tx;(void)n;tx_increment=inc;(void)wide;if(ts_dma.active)return -1;
  ts_dma.active=1;dma_buffer=rx;starts++;return 0;
 }
-static int dma_poll(void){if(done==1){if(stream_test_source==2){memcpy(dma_buffer,packets,6016);if(corrupt)dma_buffer[17]^=1;}else memset(dma_buffer,++generation,6016);}return done;}
+static int dma_poll(void){if(done==1){if(stream_test_source>=2){memcpy(dma_buffer,packets,6016);if(corrupt)dma_buffer[17]^=1;}else memset(dma_buffer,++generation,6016);}return done;}
 static int dma_finish(int result,unsigned report){(void)report;ts_dma.active=0;finishes++;return result;}
 static int end(void){return 0;}
 static int begin(void){if(ts_dma.active)violations++;return 0;}
@@ -65,6 +66,8 @@ void complete(int result){done=result;}
 void credit(int result){send_result=result;}
 void input(int result){fifo=result;}
 void stop(void){tuner_ts_stream_stop();}
+void fixed_pattern(int bad){stream_test_source=3;stream_dma_pattern_prepare();corrupt=bad;}
+unsigned increment(void){return tx_increment;}
 void pattern(int bad){stream_test_source=2;stream_dma_pattern_prepare();corrupt=bad;}
 unsigned pattern_stat(unsigned i){unsigned v[]={stream_pattern_checks,stream_pattern_errors,stream_pattern_first,S(2)};return v[i];}
 unsigned get(unsigned i){unsigned v[]={starts,finishes,sends,stops,violations,packet_index,position,pending,pipe_current,pipe_inflight,pipe_ready,stream_over,stream_busy,ts_dma.active,syncs};return v[i];}
@@ -121,4 +124,13 @@ unsigned trace(unsigned i,unsigned which){return which?recv_flags[i]:recv_values
         self.assertEqual(self.c.pattern_stat(1),1);self.assertEqual(self.c.pattern_stat(2),17)
         self.assertEqual(self.c.get(2),0);self.assertEqual(self.c.get(3),1)
         self.assertEqual(self.c.get(13),0);self.assertEqual(self.c.pattern_stat(3),0x20)
+    def test_fixed_dma_uses_nonincrementing_source_and_detects_corruption(self):
+        self.c.reset();self.c.fixed_pattern(0);self.c.input(-4);self.c.poll()
+        self.assertEqual(self.c.increment(),0)
+        self.c.complete(1);self.c.poll();self.assertEqual(self.c.pattern_stat(1),0)
+        self.assertEqual(self.c.trace(0,0),255);self.assertEqual(self.c.get(5),32)
+        self.c.stop();self.assertEqual(self.c.pattern_stat(3),0x20)
+        self.c.reset();self.c.fixed_pattern(1);self.c.poll();self.c.complete(1);self.c.poll()
+        self.assertEqual(self.c.pattern_stat(1),1);self.assertEqual(self.c.get(2),0)
+        self.assertEqual(self.c.get(13),0)
 if __name__=='__main__':unittest.main()
