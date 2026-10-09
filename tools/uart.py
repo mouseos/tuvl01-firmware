@@ -124,6 +124,7 @@ def main():
     command_arg.choices.append('wifi-dpd')
     command_arg.choices.append('wifi-rate-mailbox')
     command_arg.choices.append('wifi-auto-per')
+    command_arg.choices.append('wifi-osc')
     command_arg.choices.extend(['wifi-rx-start','wifi-rx-stop','wifi-rx-stats'])
     a=p.parse_args()
     if a.benchmark_seconds is not None and (a.command!='ts-benchmark' or not 1<=a.benchmark_seconds<=300):
@@ -305,6 +306,11 @@ def main():
                 result=t.wait(lambda s:s.startswith('WIFI auto PER end status='),15)
                 print(result);t.write(b'i');t.expect('UART application')
                 if not result.endswith('=transferred'):raise RuntimeError('Auto PER request incomplete; no automatic retry')
+            if a.command=='wifi-osc':
+                t.write(b'i');t.expect('UART application');t.write(bytes([6]))
+                result=t.wait(lambda s:s.startswith('WIFI OSC end status='),10)
+                print(result);t.write(b'i');t.expect('UART application')
+                if not result.endswith('=transferred'):raise RuntimeError('OSC request refused or failed; no automatic retry')
             if a.command=='wifi-rate-mailbox':
                 t.write(b'i');t.expect('UART application');t.write(b'&')
                 result=t.wait(lambda s:s.startswith('WIFI rate mailbox end status='),15)

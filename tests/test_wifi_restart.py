@@ -27,6 +27,7 @@ static struct { unsigned pending; } wifi_feedback;
 static unsigned card_verified,wifi_hif_ready,wifi_tx_fault;
 static unsigned wifi_mac_valid,wifi_board_sent;
 static unsigned wifi_dpd_attempted,wifi_dpd_transferred;
+static unsigned wifi_osc_attempted;
 static unsigned wifi_per_attempted,wifi_per_transferred,wifi_per_steps;
 static unsigned wifi_sequence,wifi_channel_token;
 static unsigned wifi_tc1_free,wifi_tc2_free,wifi_tc3_free,wifi_tc4_free,wifi_tc5_free;
@@ -86,6 +87,7 @@ void reset(unsigned selected,unsigned active){
  stream=active&512;card_verified=mode!=15;clock_reg=mode==16?0:0x100;
  wifi_hif_ready=1;wifi_tx_fault=1;wifi_tc4_free=2;
  wifi_mac_valid=wifi_board_sent=wifi_dpd_attempted=wifi_dpd_transferred=1;
+ wifi_osc_attempted=1;
  wifi_per_attempted=wifi_per_transferred=wifi_per_steps=1;
  wifi_sequence=255;wifi_channel_token=31;
  wifi_tc1_free=14;wifi_tc2_free=wifi_tc3_free=wifi_tc5_free=1;
@@ -93,6 +95,7 @@ void reset(unsigned selected,unsigned active){
 }
 unsigned cache_complete(void){return wifi_bss_cache.complete;}
 unsigned connection_unresolved(void){return wifi_connection_unresolved;}
+unsigned oscillator_attempted(void){return wifi_osc_attempted;}
 unsigned state(unsigned i){unsigned v[]={ready,failed,refused,wifi_hif_ready,
  wifi_tx_fault,wifi_tc4_free,delay,bad,events,wifi_mac_valid,wifi_board_sent,
  wifi_dpd_attempted,wifi_per_attempted,wifi_credit_probe,wifi_status_polling,
@@ -122,6 +125,7 @@ unsigned step(unsigned i){return trace[i];}
         self.assertEqual(self.state()[9:], [0] * 7)
         self.assertEqual(self.c.state(16), 0)
         self.assertEqual(self.c.connection_unresolved(),0)
+        self.assertEqual(self.c.oscillator_attempted(),0)
 
     def test_real_restart_invalidates_scan_cache_but_refused_restart_does_not(self):
         self.c.reset(0,0);self.c.sdio_wifi_restart()
@@ -135,6 +139,7 @@ unsigned step(unsigned i){return trace[i];}
             self.c.sdio_wifi_restart()
             self.assertEqual(self.state()[:6], [0, 0, 1, 1, 1, 2], active)
             self.assertEqual(self.c.state(8), 0)
+            self.assertEqual(self.c.oscillator_attempted(),1)
 
     def test_invalid_image_card_or_clock_prevents_any_hardware_write(self):
         for mode in (14, 15, 16):

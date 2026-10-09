@@ -68,3 +68,5 @@ cleanup未解決の場合はfailure latchで再試行を拒否します。
 `scan`は受信scan、`wifi-rx-*`は受信診断です。
 rate・HT・channel・queue・TX window・polling関連commandは実験用設定です。
 運用条件を満たさない変更はtarget側で拒否します。設定選択の成功は通信成功や速度向上を保証しません。
+
+[発振器の待ち時間設定](wifi-osc.md)は、AP停止中に明示的に送る診断commandです。

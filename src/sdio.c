@@ -78,6 +78,7 @@ static uint8_t wifi_management_rcpi,wifi_peer_rcpi;
 static uint8_t wifi_mac[6];
 static unsigned wifi_mac_valid,wifi_board_sent,wifi_ap_active;
 static unsigned wifi_dpd_attempted,wifi_dpd_transferred;
+static unsigned wifi_osc_attempted;
 static unsigned wifi_per_attempted,wifi_per_transferred,wifi_per_steps;
 static uint8_t wifi_management[512];
 static unsigned wifi_management_length;
@@ -526,6 +527,7 @@ void sdio_wifi_restart(void){
     field("WIFI reset INI_RDY WCIR=",chip);uart_puts("\n");
     wifi_mac_valid=wifi_board_sent=0;
     wifi_dpd_attempted=wifi_dpd_transferred=0;
+    wifi_osc_attempted=0;
     wifi_per_attempted=wifi_per_transferred=wifi_per_steps=0;
     wifi_sequence=0;wifi_channel_token=1;
     wifi_tc1_free=wifi_tc2_free=wifi_tc3_free=wifi_tc4_free=wifi_tc5_free=0;
@@ -1679,6 +1681,28 @@ int sdio_wifi_wpa_key_submit(const unsigned char *body,unsigned n){
     for(unsigned i=0;i<sizeof command;i++)wipe[i]=0;
     if(result)wifi_connection_unresolved=1;
     return result;
+}
+void sdio_wifi_osc(void){
+    if(wifi_ap_active || wifi_peer_state || wifi_peer_activate_pending ||
+       wifi_management_pending || wifi_data_count || tuner_ts_stream_active() ||
+       wifi_ais_retained_active || wifi_connection_unresolved){
+        uart_puts("WIFI OSC end status=refused-active\n");return;
+    }
+    if(wifi_osc_attempted){uart_puts("WIFI OSC end status=refused-attempted\n");return;}
+    if(!wifi_hif_ready || wifi_tx_fault || tx_poll() ||
+       wifi_tc1_free!=14 || wifi_tc2_free!=1 || wifi_tc3_free!=1 ||
+       wifi_tc4_free!=4 || wifi_tc5_free!=1){
+        uart_puts("WIFI OSC end status=refused-state\n");return;
+    }
+    /* MT5931 SET_OSC: prefix8 + little-endian stable time0 + reserved6.
+     * The Linux initialization uses zero. Credit return is not readback. */
+    uint8_t packet[16]={0};
+    wifi_osc_attempted=1;
+    if(control_set(0xf2,packet,sizeof packet)){
+        uart_puts("WIFI OSC end status=failed\n");return;
+    }
+    uart_puts("WIFI OSC stable_time=00000000 readback=unavailable\n");
+    uart_puts("WIFI OSC end status=transferred\n");
 }
 void sdio_wifi_board(void){
     wifi_board_sent=0;

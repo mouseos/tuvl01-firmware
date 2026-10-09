@@ -9,6 +9,8 @@ void sdio_wifi_mac(void);
 void sdio_wifi_capability(void);
 void sdio_wifi_scan(void);
 void sdio_wifi_board(void);
+/* Explicit idle-only MT5931 oscillator stable-time0 command; no readback. */
+void sdio_wifi_osc(void);
 void sdio_wifi_dpd(void);
 void sdio_wifi_auto_per(void);
 void sdio_wifi_ap(void);
