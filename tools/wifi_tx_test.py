@@ -2,6 +2,33 @@
 import argparse,hashlib,json,pathlib,re,socket,struct,sys,time
 import wifi_connect
 from uart import Transport
+from collections import deque
+
+class BenchUART:
+    """Drain UART without blocking UDP; retain only bounded benchmark replies."""
+    def __init__(self,transport):
+        self.transport=transport;self.lines=deque()
+    def pump(self):
+        t=self.transport
+        available=t.ser.in_waiting
+        if not available:return
+        data=t.ser.read(min(available,65536))
+        t.log.write(data);t.log.flush();t.pending+=data
+        while b'\n' in t.pending:
+            raw,t.pending=t.pending.split(b'\n',1)
+            if len(raw)+1>4096:raise ValueError('UART line exceeds transport limit')
+            line=raw.decode('ascii',errors='backslashreplace').strip()
+            if line.startswith(('UART rejected','UART timeout')):raise RuntimeError(line)
+            if line.startswith('WIFI TX bench '):
+                if len(self.lines)>=32:raise ValueError('Too many UART benchmark replies')
+                self.lines.append(line)
+        if len(t.pending)>4096:raise ValueError('UART line exceeds transport limit')
+    def wait(self,predicate,timeout=5):
+        self.pump()
+        while self.lines:
+            line=self.lines.popleft()
+            if predicate(line):return line
+        return self.transport.wait(predicate,timeout)
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--interface',required=True);p.add_argument('--restore-profile',required=True)
@@ -21,7 +48,7 @@ def main():
             udp.setsockopt(socket.SOL_SOCKET,socket.SO_RCVBUF,1024*1024)
             trial["socket_receive_buffer_bytes"]=udp.getsockopt(socket.SOL_SOCKET,socket.SO_RCVBUF)
             udp.bind((client,4204));udp.settimeout(.2);t=Transport(a.uart_port,log)
-            started=False
+            started=False;first=last_time=None
             try:
                 t.write(b'i');t.expect('UART application')
                 for _ in range(6):
@@ -41,7 +68,10 @@ def main():
                 if status!='WIFI TX bench begin status=active':raise RuntimeError(status)
                 started=True;start=time.monotonic();first=last_time=None
                 expected=bytes(i%251 for i in range(12,a.payload_bytes))
+                bench_uart=BenchUART(t);next_uart_poll=start
                 while time.monotonic()-start<11.5:
+                    if time.monotonic()>=next_uart_poll:
+                        bench_uart.pump();next_uart_poll=time.monotonic()+.02
                     try:data,source=udp.recvfrom(2048)
                     except socket.timeout:continue
                     now=time.monotonic()
@@ -55,17 +85,17 @@ def main():
                     last=seq;packets[seq]=data;digest.update(data)
                     if first is None:first=now
                     last_time=now
-                counters=t.wait(lambda x:x.startswith('WIFI TX bench packets='),5)
+                counters=bench_uart.wait(lambda x:x.startswith('WIFI TX bench packets='),5)
                 trial['target']={k:int(v,16) for k,v in re.findall(r'(\w+)=([0-9a-f]{8})',counters)}
-                timing=t.wait(lambda x:x.startswith('WIFI TX bench timing counts='),5)
+                timing=bench_uart.wait(lambda x:x.startswith('WIFI TX bench timing counts='),5)
                 trial['timing']={k:int(v,16) for k,v in re.findall(r'(\w+)=([0-9a-f]{8})',timing)}
                 trial['timing']['bins']=[]
                 for kind in range(2):
-                    line=t.wait(lambda x:x.startswith('WIFI TX bench timing kind='),5)
+                    line=bench_uart.wait(lambda x:x.startswith('WIFI TX bench timing kind='),5)
                     values={k:int(v,16) for k,v in re.findall(r'(\w+)=([0-9a-f]{8})',line)}
                     if values['kind']!=kind:raise RuntimeError('Timing kind mismatch')
                     trial['timing']['bins'].append(values)
-                trial['target_end']=t.wait(lambda x:x.startswith('WIFI TX bench end status='),5)
+                trial['target_end']=bench_uart.wait(lambda x:x.startswith('WIFI TX bench end status='),5)
                 count=trial['target']['packets']
                 trial.update(received=len(packets),received_bytes=len(packets)*a.payload_bytes,
                     missing=[i for i in range(count) if i not in packets],
@@ -74,11 +104,18 @@ def main():
                 if any(i>=count for i in packets):raise RuntimeError('Received beyond target count')
                 if trial['target_end']!='WIFI TX bench end status=complete' or trial['target']['failed'] or trial['invalid']:
                     raise RuntimeError('Direct sender failed or invalid payload received')
+            except Exception as error:
+                trial['error']=type(error).__name__+': '+str(error)
+                raise
             finally:
-                payload_path.write_bytes(b''.join(packets.values()))
-                if started:
-                    t.write(b'>');t.write(b'i');t.expect('UART application')
-                t.ser.close()
+                trial.update(received=len(packets),received_bytes=len(packets)*a.payload_bytes,
+                    sha256_in_receive_order=digest.hexdigest(),
+                    receive_span_seconds=None if first is None else last_time-first)
+                try:
+                    payload_path.write_bytes(b''.join(packets.values()))
+                    if started:
+                        t.write(b'>');t.write(b'i');t.expect('UART application')
+                finally:t.ser.close()
     wifi_connect.data_test=diagnostic;saved=sys.argv
     sys.argv=[saved[0],'--interface',a.interface,'--restore-profile',a.restore_profile,'--seconds','30','--data','--mtu']
     try:return wifi_connect.main()
