@@ -97,4 +97,6 @@ int sdio_wifi_wpa_key_submit(const unsigned char *body,unsigned length);
 int sdio_wifi_wpa_join(const unsigned char *target);
 int sdio_wifi_wpa_leave(void);
 unsigned sdio_wifi_milliseconds(void);
+/* Idle NIC stop/sample/reset; callback must not access SDIO. */
+void sdio_wifi_quiet_sample(void (*sample)(void));
 #endif

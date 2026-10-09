@@ -50,8 +50,8 @@ static void usb_task(void *p) {
             if(c<0)vTaskDelay(1);
             continue;
         }
-        if(c>=0 && c!='i' && c!='|' && c!=13 && c!=18 && c!=20 && c!=21 && c!=22)sdio_wifi_tx_bench_stop();
-        if(c>=0 && c!=13 && c!=18 && c!=20 && c!=21 && c!=22 && c!='i' && c!='|' && c!='t' && c!='B' && c!='E' && c!='7' && c!='5' && c!='4' && c!='^')tuner_ts_stream_interrupt();
+        if(c>=0 && c!='i' && c!='|' && c!=13 && c!=18 && c!=20 && c!=21 && c!=22 && c!=24)sdio_wifi_tx_bench_stop();
+        if(c>=0 && c!=13 && c!=18 && c!=20 && c!=21 && c!=22 && c!=24 && c!='i' && c!='|' && c!='t' && c!='B' && c!='E' && c!='7' && c!='5' && c!='4' && c!='^')tuner_ts_stream_interrupt();
         if(c=='u')usb_debug();
         if(c=='g')usb_pin_debug();
         if(c=='d')sdio_identify();
@@ -148,6 +148,7 @@ static void usb_task(void *p) {
         if(c==17)sdio_wifi_tx_ampdu();
         if(c=='l')tuner_ts_capture();
         if(c==23)tuner_ts_capture_poll();
+        if(c==24)sdio_wifi_quiet_sample(tuner_quality);
         if(c=='B')tuner_ts_stream_start();
         if(c=='E')tuner_ts_stream_stop();
         if(c=='r')tuner_tmcc_read();

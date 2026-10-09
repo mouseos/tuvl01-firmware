@@ -11,6 +11,11 @@ class Commands(unittest.TestCase):
             t,error=self.invoke('tuner-switch','TUNE switch end status='+status)
             self.assertEqual([c.args[0] for c in t.write.call_args_list[:2]],[b'i',bytes([22])])
             self.assertEqual(error is None,status=='switched');t.ser.close.assert_called_once()
+    def test_quiet_quality_requires_sample_and_restart(self):
+        for status in ('sampled-restarted','failed-restarted','restart-failed','refused-active','refused-state','refused-ownership','refused-irq'):
+            t,error=self.invoke('wifi-quiet-quality','WIFI quiet sample end status='+status)
+            self.assertEqual([c.args[0] for c in t.write.call_args_list[:2]],[b'i',bytes([24])])
+            self.assertEqual(error is None,status=='sampled-restarted');t.ser.close.assert_called_once()
     def test_idle_quality_requires_restoration_and_closes_serial(self):
         for status in ('restored','failed','wake-failed','refused-active','refused-state',
                        'refused-clock','refused-ownership','refused-handoff'):

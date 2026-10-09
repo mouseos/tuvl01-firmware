@@ -51,8 +51,8 @@ static void uart_puts(const char *s){
 static void field(const char *s,uint32_t n){(void)s;(void)n;}
 static int radio_read(unsigned a,uint32_t *v){
  if(a==4){event(10);*v=mode==13?0:0x100;return 0;}
- if(a!=0)return -1;
- if(phase==0){event(1);*v=mode==2?0x205930:0x205931;return mode==1?-1:0;}
+ if(a!=0 || !(clock_reg&0x100))return -1;
+ if(phase==0){event(1);*v=(mode==2 || mode==4)?0x205930:0x205931;return (mode==1 || mode==3)?-1:0;}
  if(phase==1){event(7);*v=mode==9?0x205931:mode==10?0x5930:0x5931;return 0;}
  event(9);*v=mode==12?0x5931:0x205931;return 0;
 }
@@ -121,7 +121,7 @@ unsigned step(unsigned i){return trace[i];}
     def test_reset_order_confirmed_before_reload_and_no_credit_is_invented(self):
         self.c.reset(0, 0)
         self.c.sdio_wifi_restart()
-        self.assertEqual([self.c.step(i) for i in range(self.c.state(8))], list(range(1, 11)))
+        self.assertEqual([self.c.step(i) for i in range(self.c.state(8))], [1,4,5,6,7,8,9,10])
         self.assertEqual(self.state()[:8], [1, 0, 0, 0, 0, 0, 120, 0])
         self.assertEqual(self.state()[9:], [0] * 7)
         self.assertEqual(self.c.state(16), 0)
@@ -142,13 +142,16 @@ unsigned step(unsigned i){return trace[i];}
             self.assertEqual(self.c.state(8), 0)
             self.assertEqual(self.c.oscillator_attempted(),1)
 
-    def test_invalid_image_card_or_clock_prevents_any_hardware_write(self):
-        for mode in (14, 15, 16):
+    def test_invalid_image_or_card_prevents_any_hardware_write(self):
+        for mode in (14, 15):
             self.c.reset(mode, 0)
             self.c.sdio_wifi_restart()
             self.assertEqual(self.state()[:3], [0, 0, 1])
             self.assertEqual(self.c.state(8), 0)
 
+    def test_identified_card_with_clock_stopped_can_reload(self):
+        self.c.reset(16,0);self.c.sdio_wifi_restart()
+        self.assertEqual(self.state()[:8],[1,0,0,0,0,0,120,0])
     def test_retained_hif_ready_still_requires_full_firmware_reload(self):
         self.c.reset(9, 0)
         self.c.sdio_wifi_restart()

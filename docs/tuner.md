@@ -124,3 +124,10 @@ TVTestのUDP入力をlocalhostの指定portへ合わせます。
 PCツールはTTS1 headerを除去し、TS payloadを変更せず転送します。
 対応input driver、decoder、必要な正規のCAS環境はPC側で準備してください。
 本firmwareとPCツールは放送のdescramblingを実装しません。
+
+Wi-Fiを初期化し通信を停止した状態で、`wifi-quiet-quality`を実行できます。
+NICへ電源モード1を指示し、最大5秒でWLAN_READYの消失を確認します。
+firmwareへ所有権を渡して受信品質を測定した後、radioのリセットとfirmwareの再ロードを試みます。
+停止後の復帰に失敗する場合があります。`restart-failed`ではWi-Fiを使用できず、完全な電源入れ直しが必要です。
+古いMAC・基板設定・HIFクレジットは無効になるため、続けてWi-Fiを使う前に`mac`を実行してください。
+この診断はプロトコル上の停止を確認します。クロックや電源の実測は行いません。

@@ -5,7 +5,7 @@ class ClockProfile(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         src=(ROOT/'src/sdio.c').read_text()
-        function=src[src.index('void sdio_wifi_clock_profile(void){'):src.index('void sdio_wifi_width(void){')]
+        function=src[src.index('void sdio_wifi_clock_profile(void){'):src.index('void sdio_wifi_quiet_sample(')]
         cls.tmp=tempfile.TemporaryDirectory();p=pathlib.Path(cls.tmp.name)
         flags=['wifi_ap_active','wifi_peer_state','wifi_peer_activate_pending','wifi_management_pending',
                'wifi_data_count','wifi_bench_active','wifi_sink_active','wifi_scan_active','wifi_scan_unresolved',

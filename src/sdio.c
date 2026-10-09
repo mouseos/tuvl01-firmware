@@ -542,13 +542,18 @@ void sdio_wifi_restart(void){
        tuner_ts_stream_active()){
         uart_puts("WIFI restart end status=refused-active\n");return;
     }
-    if(!card_verified || !(S(0x24)&0x100) || !radio_image_valid()){
+    if(!card_verified || !radio_image_valid()){
         uart_puts("WIFI restart end status=refused-state\n");return;
     }
+    /* Identification and a failed download leave the SD clock disabled.
+     * Re-enable its retained divider only after card/image validation. */
+    S(0x24)|=0x100;
     wifi_scan_cache_finish(&wifi_bss_cache,0);
     uint32_t chip,control;unsigned stage=1;
-    if(radio_read(0,&chip) || (chip&0xffff)!=0x5931 ||
-       radio_write(4,0x200) || radio_wait(4,0x100,0))goto failed;
+    /* MT5931 D0 resets/downloads before acquiring LP ownership. After
+     * NIC power mode 1, requesting driver-own first can time out forever.
+     * Validate chip identity through retained HIFSYS, then reset it. */
+    if(radio_read(0,&chip) || (chip&0xffff)!=0x5931)goto failed;
     field("WIFI reset before WCIR=",chip);uart_puts("\n");
     stage=2;
     /* MT5931 reference uses WMCSR.CHIP_RST (write bit15), then zero,
@@ -2688,6 +2693,56 @@ failed:
     S(0x24)&=~0x100;S(0x24)=previous&~0x100;S(0x24)=previous;vTaskDelay(1);
     field("WIFI clock profile restored=",S(0x24));uart_puts("\n");
     uart_puts("WIFI clock profile end status=failed\n");
+}
+void sdio_wifi_quiet_sample(void (*sample)(void)){
+    const char *result="failed";uint32_t chip,own;
+    if(sdio_wifi_traffic_active()){
+        uart_puts("WIFI quiet sample end status=refused-active\n");return;
+    }
+    if(!sample || !card_verified || !wifi_hif_ready || wifi_tx_fault ||
+       !(S(0x24)&0x100) || !radio_image_valid()){
+        uart_puts("WIFI quiet sample end status=refused-state\n");return;
+    }
+    if(radio_read(0,&chip) || (chip&0x20ffff)!=0x205931 ||
+       radio_read(4,&own) || !(own&0x100)){
+        uart_puts("WIFI quiet sample end status=refused-ownership\n");return;
+    }
+    if(sdio_irq_set(0)){
+        uart_puts("WIFI quiet sample end status=refused-irq\n");return;
+    }
+    /* Normal NIC_POWER_CTRL: mode 1, three reserved zero bytes.
+     * No response or returned credit is required for NIC shutdown. */
+    uint8_t packet[12]={0};packet[8]=1;
+    int sent=control_send(0x05,1,packet,sizeof packet);
+    /* A failed transport may have delivered the command. Invalidate the
+     * old session immediately and always attempt reset/reload below. */
+    wifi_hif_ready=0;wifi_tx_fault=1;wifi_mac_valid=wifi_board_sent=0;
+    wifi_tc1_free=wifi_tc2_free=wifi_tc3_free=wifi_tc4_free=wifi_tc5_free=0;
+    if(sent)goto restart;
+    TickType_t start=xTaskGetTickCount();
+    for(;;){
+        if(radio_read(0,&chip) || (chip&0xffff)!=0x5931)goto restart;
+        if(!(chip&0x200000))break;
+        if((TickType_t)(xTaskGetTickCount()-start)>=pdMS_TO_TICKS(5000))goto restart;
+        vTaskDelay(10);
+    }
+    field("WIFI quiet sample stopped_WCIR=",chip);uart_puts("\n");
+    if(radio_write(4,0x100))goto restart;
+    vTaskDelay(1);
+    if(radio_read(4,&own) || (own&0x100))goto restart;
+    field("WIFI quiet sample stopped_WHLPCR=",own);uart_puts("\n");
+    /* WLAN_READY clear plus FW-own proves protocol shutdown, not a
+     * measured clock or supply state. The callback must not use SDIO. */
+    vTaskDelay(pdMS_TO_TICKS(1500));sample();result="sampled";
+restart:
+    /* MT5931 D0 acquires ownership only after reset/download/ready. */
+    sdio_wifi_restart();
+    if(wifi_tx_fault || wifi_hif_ready || !card_verified)goto failed;
+    uart_puts("WIFI quiet sample end status=");
+    uart_puts(result[0]=='s'?"sampled-restarted":"failed-restarted");uart_puts("\n");return;
+failed:
+    wifi_hif_ready=0;wifi_tx_fault=1;
+    uart_puts("WIFI quiet sample end status=restart-failed\n");
 }
 void sdio_wifi_width(void){
     uint8_t previous,capability,value;uint32_t chip,current;
