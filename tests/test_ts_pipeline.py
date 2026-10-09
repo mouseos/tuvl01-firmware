@@ -9,6 +9,8 @@ class Pipeline(unittest.TestCase):
         harness=r"""
 #include <stdint.h>
 #include <string.h>
+#include "ts_check.h"
+static struct ts_check stream_input;
 typedef uint32_t TickType_t;
 #define TUNER_TS_PACKET 188U
 #define TUNER_TS_MAX_PACKETS 32U
@@ -55,7 +57,7 @@ static int sdio_wifi_ts(const uint8_t *p,unsigned n,unsigned s,unsigned i,unsign
 """
         exports=r"""
 void reset(void){
- ts_dma.active=0;stream_pipeline_abort();streaming=1;stream_pipeline=1;
+ ts_dma.active=0;stream_pipeline_abort();streaming=1;stream_pipeline=1;ts_check_reset(&stream_input);
  stream_test_source=stream_pattern_checks=stream_pattern_errors=corrupt=0;stream_pattern_first=~0U;
  pending=position=sequence=packet_index=stream_flags=stream_over=stream_under=stream_busy=0;
  stream_read_ticks=stream_tx_ticks=starts=finishes=sends=stops=syncs=violations=tick=generation=0;
@@ -72,10 +74,11 @@ void pattern(int bad){stream_test_source=2;stream_dma_pattern_prepare();corrupt=
 unsigned pattern_stat(unsigned i){unsigned v[]={stream_pattern_checks,stream_pattern_errors,stream_pattern_first,S(2)};return v[i];}
 unsigned get(unsigned i){unsigned v[]={starts,finishes,sends,stops,violations,packet_index,position,pending,pipe_current,pipe_inflight,pipe_ready,stream_over,stream_busy,ts_dma.active,syncs};return v[i];}
 unsigned trace(unsigned i,unsigned which){return which?recv_flags[i]:recv_values[i];}
+unsigned input_count(void){return stream_input.packets;}
 """
         cls.tmp=tempfile.TemporaryDirectory();p=pathlib.Path(cls.tmp.name)
         (p/'pipe.c').write_text(harness+body+exports)
-        subprocess.run(['cc','-shared','-fPIC','-Wall','-Wextra','-Werror',str(p/'pipe.c'),'-o',str(p/'pipe.so')],check=True)
+        subprocess.run(['cc','-shared','-fPIC','-Wall','-Wextra','-Werror','-iquote'+str(ROOT/'include'),str(p/'pipe.c'),str(ROOT/'src/ts_check.c'),'-o',str(p/'pipe.so')],check=True)
         cls.c=ctypes.CDLL(str(p/'pipe.so'))
     @classmethod
     def tearDownClass(cls):cls.tmp.cleanup()
@@ -95,6 +98,12 @@ unsigned trace(unsigned i,unsigned which){return which?recv_flags[i]:recv_values
         self.assertEqual(self.c.get(8),0);self.assertEqual(self.c.get(5),0)
         self.c.credit(1);self.c.poll();self.assertEqual(self.c.get(5),32)
         self.c.poll();self.assertEqual(self.c.get(5),64);self.assertEqual(self.c.get(4),0)
+    def test_input_is_checked_once_after_dma_and_not_on_send_retry(self):
+        self.c.reset();self.c.poll();self.assertEqual(self.c.input_count(),0)
+        self.c.complete(1);self.c.credit(0);self.c.poll();self.assertEqual(self.c.input_count(),32)
+        self.c.complete(0);self.c.poll();self.c.poll();self.assertEqual(self.c.input_count(),32)
+        self.c.complete(1);self.c.poll();self.assertEqual(self.c.input_count(),64)
+        self.c.credit(1);self.c.poll();self.assertEqual(self.c.input_count(),64)
     def test_fifo_resync_marks_next_acquired_buffer_not_current_data(self):
         self.c.reset();self.c.poll();self.c.complete(1);self.c.input(-3);self.c.poll()
         self.assertEqual(self.c.get(11),1);self.assertEqual(self.c.get(14),1)

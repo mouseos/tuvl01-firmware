@@ -35,6 +35,14 @@ class StreamCapture:
         self.data.extend(body)
         if self.on_payload is not None:self.on_payload(body)
 
+def input_summary(line):
+    if not line.startswith('TS input '):return None
+    names=('source','packets','sync','tei','adaptation','comparisons','cc_jumps','cc_repeats')
+    pattern='TS input '+' '.join(name+r'=([0-9a-f]{8})' for name in names)
+    match=re.fullmatch(pattern,line)
+    if match is None:raise ValueError('Invalid target input summary')
+    return dict(zip(names,(int(value,16) for value in match.groups())))
+
 def receive(port,output,log_path,seconds,forward_port=None,quality_watch=False):
     if not 1<=seconds<=300:raise ValueError('seconds must be 1..300')
     if forward_port is not None and not 1024<=forward_port<=65535:
@@ -73,7 +81,11 @@ def receive(port,output,log_path,seconds,forward_port=None,quality_watch=False):
                     m=re.fullmatch(r'TS stream datagrams=([0-9a-f]{8}) packets=([0-9a-f]{8}) overrun=([0-9a-f]{8}) underrun=([0-9a-f]{8}) busy=([0-9a-f]{8})',summary)
                     if m is None:raise ValueError('Invalid target stream summary')
                     stats.update(zip(('target_datagrams','target_packets','target_overrun','target_underrun','target_busy'),map(lambda x:int(x,16),m.groups())))
-                    stats['target_end']=t.wait(lambda s:s.startswith('TS stream end status='),10)
+                    def end_line(line):
+                        incoming=input_summary(line)
+                        if incoming is not None:stats['target_input']=incoming
+                        return line.startswith('TS stream end status=')
+                    stats['target_end']=t.wait(end_line,10)
                     if quality_watch:
                         t.write(bytes([14]));rows=[]
                         while True:

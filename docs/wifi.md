@@ -63,6 +63,13 @@ cleanup未解決の場合はfailure latchで再試行を拒否します。
 
 ## 診断インターフェース
 
+TS転送停止時の`TS input`は、SPI/DMAで取得したbatchをWi-Fi転送前に一度だけ検査した
+packet数、sync、TEI、adaptation、CCの集計です。取得中はこの検査からUARTを出しません。
+PCの`ts_receive.py`は対応するJSONへ`target_input`を保存します。
+停止時に未送信のbatchがあるため、入力packet数とPC受信packet数は一致するとは限りません。
+CCはFIFO再同期でも飛びます。TEIはpacket headerのflagで、payloadの完全性検査ではありません。
+`source=0`が実受信です。固定dummyなどTS以外の診断sourceではsync errorが出ます。
+
 UART byte `0x0f`は、AP・STA・TS転送を停止し、送信creditがすべて戻った状態で
 2.4GHz送信出力の相対補正を−6dB、−12dB、0dBの順に送ります。
 CID `0x38`の32-byte bodyを使い、絶対出力の基板用テーブルは変更しません。

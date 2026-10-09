@@ -30,6 +30,7 @@ static unsigned stream_frame_packets=7;
 static unsigned stream_pipeline;
 static unsigned stream_dma_ticks,stream_dma_reads;
 static unsigned stream_pattern_checks,stream_pattern_errors,stream_pattern_first;
+static struct ts_check stream_input;
 static void stream_pipeline_abort(void);
 static void stream_dma_pattern_prepare(void);
 int tuner_ts_stream_active(void){return streaming!=0;}
@@ -49,7 +50,12 @@ void tuner_ts_stream_stop(void){
     field("TS pipeline reads=",stream_dma_reads);field(" elapsed_ticks=",stream_dma_ticks);
     uart_puts("\n");
     field("TS DMA pattern checks=",stream_pattern_checks);field(" errors=",stream_pattern_errors);
-    field(" first_offset=",stream_pattern_first);uart_puts("\nTS stream end status=stopped\n");
+    field(" first_offset=",stream_pattern_first);uart_puts("\n");
+    field("TS input source=",stream_test_source);field(" packets=",stream_input.packets);
+    field(" sync=",stream_input.sync);field(" tei=",stream_input.tei);
+    field(" adaptation=",stream_input.adaptation);field(" comparisons=",stream_input.comparisons);
+    field(" cc_jumps=",stream_input.cc_jumps);field(" cc_repeats=",stream_input.cc_repeats);
+    uart_puts("\nTS stream end status=stopped\n");
 }
 static void field(const char *name,unsigned number){uart_puts(name);uart_hex(number);}
 static void registers(void){
@@ -324,6 +330,7 @@ void tuner_ts_stream_start(void){
     stream_read_ticks=stream_tx_ticks=stream_poll_ticks=0;
     stream_dma_ticks=stream_dma_reads=0;
     stream_pattern_checks=stream_pattern_errors=0;stream_pattern_first=~0U;
+    ts_check_reset(&stream_input);
     field("TS stream test_source=",stream_test_source);uart_puts("\n");
     field("TS stream packets_per_datagram=",stream_frame_packets);
     field(" aggregate=",stream_aggregate);field(" burst=",stream_burst);uart_puts("\n");
@@ -433,6 +440,9 @@ static int stream_pipeline_poll(void){
                     tuner_ts_stream_stop();uart_puts("TS stream failure=dma-pattern\n");return 0;
                 }
             }
+            /* Inspect the completed input once, before SDIO transmission.
+             * Include acquired batches even if their tail is never sent. */
+            for(unsigned p=0;p<32;p++)ts_check_packet(&stream_input,pipe_packets[pipe_inflight]+p*188);
             pipe_ready=pipe_inflight;pipe_inflight=2;
         }
     }
@@ -487,6 +497,7 @@ int tuner_ts_stream_poll(void){
             stream_flags|=1;
             if(synchronize_quiet(1)){tuner_ts_stream_stop();return 0;}return 0;
         }
+        for(unsigned p=0;p<(unsigned)n;p++)ts_check_packet(&stream_input,packets+p*188);
         pending=(unsigned)n;position=0;
     }
     /* Only drain this already-read batch; never read another batch here.

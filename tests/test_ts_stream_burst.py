@@ -9,6 +9,8 @@ class Burst(unittest.TestCase):
         body=source[start:source.index('\nvoid tuner_ts_benchmark',start)]
         harness=r'''
 #include <stdint.h>
+#include "ts_check.h"
+static struct ts_check stream_input;
 typedef uint32_t TickType_t;
 static uint8_t packets[32*188];
 static unsigned streaming,pending,position,sequence,packet_index,stream_flags,stream_over,stream_under,stream_busy;
@@ -29,6 +31,7 @@ static int sdio_wifi_ts(const uint8_t *p,unsigned n,unsigned seq,unsigned index,
     sequences[at]=seq;indices[at]=index;flags[at]=flag;return replies[at];
 }
 void reset(unsigned burst){
+    ts_check_reset(&stream_input);
     streaming=1;pending=position=sequence=packet_index=stream_over=stream_under=stream_busy=0;
     stream_flags=1;stream_burst=burst;stream_aggregate=stream_test_source=0;tick=reads=calls=stops=0;
     stream_frame_packets=7;
@@ -43,11 +46,12 @@ static int sdio_wifi_ts_pair(const uint8_t *p,unsigned n,unsigned seq,unsigned i
 }
 unsigned state(unsigned i){unsigned values[]={calls,reads,stops,pending,position,sequence,packet_index,stream_busy,streaming};return values[i];}
 unsigned trace(unsigned i,unsigned field){return field==0?sizes[i]:field==1?offsets[i]:field==2?sequences[i]:field==3?indices[i]:flags[i];}
+unsigned input_count(void){return stream_input.packets;}
 '''
         cls.tmp=tempfile.TemporaryDirectory();path=pathlib.Path(cls.tmp.name)
         (path/'stream.c').write_text(harness+body)
         subprocess.run(['cc','-shared','-fPIC','-Wall','-Wextra','-Wno-unused-variable','-Werror',
-            str(path/'stream.c'),'-o',str(path/'stream.so')],check=True)
+            '-iquote'+str(ROOT/'include'),str(path/'stream.c'),str(ROOT/'src/ts_check.c'),'-o',str(path/'stream.so')],check=True)
         cls.lib=ctypes.CDLL(str(path/'stream.so'))
         cls.lib.state.restype=cls.lib.trace.restype=ctypes.c_uint
     @classmethod
@@ -83,6 +87,13 @@ unsigned trace(unsigned i,unsigned field){return field==0?sizes[i]:field==1?offs
         self.assertEqual([self.lib.trace(i,1) for i in range(6)],[0,1316,2632,2632,3948,5264])
         self.assertEqual([self.lib.trace(i,2) for i in range(6)],[0,1,2,2,3,4])
         self.assertEqual([self.lib.trace(i,4) for i in range(6)],[1,0,0,0,0,0])
+    def test_input_check_is_per_acquisition_not_per_credit_retry(self):
+        self.lib.reset(1);self.lib.reply(0,0);self.lib.tuner_ts_stream_poll()
+        self.assertEqual(self.lib.input_count(),32)
+        self.lib.reply(1,0);self.lib.tuner_ts_stream_poll()
+        self.assertEqual(self.lib.input_count(),32)
+        self.lib.tuner_ts_stream_poll();self.assertEqual(self.lib.input_count(),32)
+        self.lib.tuner_ts_stream_poll();self.assertEqual(self.lib.input_count(),64)
     def test_mid_batch_failure_stops_immediately_and_does_not_send_again(self):
         self.lib.reset(1);self.lib.reply(1,-1);self.assertEqual(self.lib.tuner_ts_stream_poll(),0)
         self.assertEqual(self.states(),[2,1,1,0,0,1,7,0,0])

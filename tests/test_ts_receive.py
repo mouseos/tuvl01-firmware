@@ -1,7 +1,13 @@
 import contextlib,io,json,pathlib,socket,struct,sys,tempfile,unittest
 from unittest.mock import MagicMock,patch
 sys.path.insert(0,str(pathlib.Path(__file__).resolve().parents[1]/'tools'))
-from ts_receive import decode,StreamCapture,receive
+from ts_receive import decode,StreamCapture,receive,input_summary
+class InputSummary(unittest.TestCase):
+    def test_all_counts_and_legacy_line(self):
+        text='TS input source=00000000 packets=00000020 sync=00000001 tei=00000002 adaptation=00000003 comparisons=00000004 cc_jumps=00000005 cc_repeats=00000006'
+        self.assertEqual(input_summary(text),dict(source=0,packets=32,sync=1,tei=2,adaptation=3,comparisons=4,cc_jumps=5,cc_repeats=6))
+        self.assertIsNone(input_summary('TS stream end status=stopped'))
+        with self.assertRaises(ValueError):input_summary(text+' extra')
 class Datagram(unittest.TestCase):
     def test_sequence_index_and_resync_preserved(self):
         body=(b'\x47'+bytes(187))*7
@@ -47,14 +53,21 @@ class Capture(unittest.TestCase):
         self.assertEqual(c.next_index,4)
 
 class ReceiverSockets(unittest.TestCase):
-    def run_capture(self,send_error=None,quality_watch=False):
+    def run_capture(self,send_error=None,quality_watch=False,target_input=False):
         udp=MagicMock();relay=MagicMock()
         udp.__enter__.return_value=udp;relay.__enter__.return_value=relay
         body=b'\x47\x01\x00\x90'+bytes(184)
         udp.recvfrom.side_effect=[(b'TTS1'+struct.pack('!III',0,0,0)+body,('192.168.74.1',4202)),socket.timeout()]
         if send_error:relay.sendto.side_effect=send_error
         t=MagicMock()
-        t.wait.side_effect=['TS stream datagrams=00000001 packets=00000001 overrun=00000000 underrun=00000000 busy=00000000','TS stream end status=stopped']+(['QUALITY watch count=00000001 partial_reads=00000000','QUALITY watch sample=00000000 raw=00000074','QUALITY watch end status=raw'] if quality_watch else [])
+        lines=iter(['TS stream datagrams=00000001 packets=00000001 overrun=00000000 underrun=00000000 busy=00000000']+
+            (['TS input source=00000000 packets=00000020 sync=00000000 tei=00000002 adaptation=00000000 comparisons=00000010 cc_jumps=00000001 cc_repeats=00000000'] if target_input else [])+
+            ['TS stream end status=stopped']+(['QUALITY watch count=00000001 partial_reads=00000000','QUALITY watch sample=00000000 raw=00000074','QUALITY watch end status=raw'] if quality_watch else []))
+        def wait(predicate,timeout):
+            for line in lines:
+                if predicate(line):return line
+            raise AssertionError('No matching fake UART line')
+        t.wait.side_effect=wait
         with tempfile.TemporaryDirectory() as td:
             out=pathlib.Path(td)/'received.ts'
             with patch('ts_receive.socket.socket',side_effect=[udp,relay]), \
@@ -75,7 +88,13 @@ class ReceiverSockets(unittest.TestCase):
         r=self.run_capture(quality_watch=True)
         self.assertEqual(r['quality_watch_raw'],['QUALITY watch count=00000001 partial_reads=00000000','QUALITY watch sample=00000000 raw=00000074'])
     def test_forwarding_uses_separate_socket(self):
-        self.assertEqual(self.run_capture()['forwarded_datagrams'],1)
+        r=self.run_capture();self.assertEqual(r['forwarded_datagrams'],1)
+        self.assertNotIn('target_input',r)
+    def test_input_summary_saved_without_assuming_sent_count(self):
+        r=self.run_capture(target_input=True)
+        self.assertEqual(r['target_input']['packets'],32)
+        self.assertEqual(r['target_input']['tei'],2)
+        self.assertEqual(r['target_packets'],1)
     def test_forward_failure_stops_target_and_preserves_received_evidence(self):
         r=self.run_capture(OSError('test relay failure'))
         self.assertIn('test relay failure',r['error'])

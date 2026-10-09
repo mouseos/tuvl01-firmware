@@ -8,6 +8,8 @@ class SourceStart(unittest.TestCase):
         body=source[start:source.index('\nvoid tuner_ts_stream_burst',start)]
         harness=r'''
 #include <stdint.h>
+#include "ts_check.h"
+static struct ts_check stream_input;
 static uint8_t packets[32*188];
 static unsigned streaming,pending,position,sequence,packet_index,stream_flags,stream_over,stream_under,stream_busy;
 static unsigned stream_read_ticks,stream_tx_ticks,stream_poll_ticks,stream_test_source;
@@ -38,7 +40,7 @@ void pipeline(unsigned dma,unsigned wide,unsigned cache){stream_pipeline=1;dma_v
 '''
         cls.tmp=tempfile.TemporaryDirectory();path=pathlib.Path(cls.tmp.name)
         (path/'start.c').write_text(harness+body)
-        subprocess.run(['cc','-shared','-fPIC','-Wall','-Wextra','-Werror',str(path/'start.c'),'-o',str(path/'start.so')],check=True)
+        subprocess.run(['cc','-shared','-fPIC','-Wall','-Wextra','-Werror','-iquote'+str(ROOT/'include'),str(path/'start.c'),str(ROOT/'src/ts_check.c'),'-o',str(path/'start.so')],check=True)
         cls.lib=ctypes.CDLL(str(path/'start.so'))
     @classmethod
     def tearDownClass(cls):cls.tmp.cleanup()

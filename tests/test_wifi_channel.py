@@ -11,6 +11,9 @@ class Channels(unittest.TestCase):
         stop=tuner[tuner.index('void tuner_ts_stream_stop(void){'):tuner.index('static void field(const char *name,unsigned number){')]
         harness=r'''
 #include <stdint.h>
+#include "ts_check.h"
+static struct ts_check stream_input;
+static unsigned stream_test_source;
 #include "wifi_io_timing.h"
 #include "wifi_service_timing.h"
 static struct wifi_service_timing wifi_service;
@@ -53,7 +56,7 @@ unsigned state(unsigned n){unsigned v[]={wifi_timing.active,wifi_timing.excluded
         cls.tmp=tempfile.TemporaryDirectory();p=pathlib.Path(cls.tmp.name)
         (p/'actual.c').write_text(harness+select+stop)
         subprocess.run(['cc','-shared','-fPIC','-Wall','-Wextra','-Werror','-I'+str(ROOT/'include'),
-            str(p/'actual.c'),str(ROOT/'src/wifi_channel.c'),str(ROOT/'src/wifi_tx_timing.c'),
+            str(p/'actual.c'),str(ROOT/'src/ts_check.c'),str(ROOT/'src/wifi_channel.c'),str(ROOT/'src/wifi_tx_timing.c'),
             str(ROOT/'src/wifi_rates.c'),str(ROOT/'src/wifi_mgmt.c'),str(ROOT/'src/wifi_io_timing.c'),str(ROOT/'src/wifi_service_timing.c'),'-o',str(p/'channel.so')],check=True)
         cls.c=C.CDLL(str(p/'channel.so'))
         cls.c.wifi_channel_request_ap.argtypes=[C.c_void_p,C.c_uint,C.c_uint,C.c_uint,C.c_uint,C.c_void_p]
