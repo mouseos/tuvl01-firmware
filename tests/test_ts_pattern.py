@@ -34,4 +34,14 @@ class Pattern(unittest.TestCase):
             self.assertEqual(bytes(output),b'\xa5'*(32*188))
         self.assertEqual(self.lib.ts_pattern_fill(None,32*188),0)
 
+    def test_dma_pattern_matches_pc_verifier_and_bounds(self):
+        from ts_pattern_verify import verify
+        self.lib.ts_pattern_dma_fill.argtypes=[ctypes.c_void_p,ctypes.c_uint]
+        out=(ctypes.c_uint8*(6016+8))(*([0xa5]*(6016+8)))
+        self.assertEqual(self.lib.ts_pattern_dma_fill(out,6015),0)
+        self.assertEqual(bytes(out),b'\xa5'*len(out))
+        self.assertEqual(self.lib.ts_pattern_dma_fill(None,6016),0)
+        self.assertEqual(self.lib.ts_pattern_dma_fill(out,len(out)),32)
+        self.assertEqual(bytes(out[-8:]),b'\xa5'*8)
+        self.assertEqual(verify(bytes(out[:6016])*3)['errors'],0)
 if __name__=='__main__':unittest.main()

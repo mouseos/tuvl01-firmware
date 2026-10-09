@@ -14,6 +14,8 @@ static unsigned stream_read_ticks,stream_tx_ticks,stream_poll_ticks,stream_test_
 static unsigned stream_frame_packets=7,stream_aggregate,stream_burst;
 static unsigned stream_pipeline,dma_verified,dma_long_verified;
 static unsigned stream_dma_reads,stream_dma_ticks;
+static unsigned stream_pattern_checks,stream_pattern_errors,stream_pattern_first;
+static void stream_dma_pattern_prepare(void){}
 static uint32_t ccr;
 #define R32(a) ccr
 static void stream_pipeline_abort(void){}
@@ -62,4 +64,15 @@ void pipeline(unsigned dma,unsigned wide,unsigned cache){stream_pipeline=1;dma_v
             self.assertEqual(self.state(),[0,0,0,0,0,17,99])
         self.lib.reset(0,0,0);self.lib.pipeline(1,1,0);self.lib.tuner_ts_stream_start()
         self.assertEqual(self.state(),[1,0,1,1,0,0,0])
+    def test_dma_source_requires_pipeline_and_skips_tuner_io(self):
+        self.lib.reset(2,0,1);self.lib.tuner_ts_stream_start()
+        self.assertEqual(self.state(),[0,2,0,0,0,17,99])
+        for dma,wide,cache in [(0,1,0),(1,0,0),(1,1,1)]:
+            self.lib.reset(2,0,1);self.lib.pipeline(dma,wide,cache);self.lib.tuner_ts_stream_start()
+            self.assertEqual(self.state(),[0,2,0,0,0,17,99])
+        self.lib.reset(2,0,1);self.lib.pipeline(1,1,0);self.lib.tuner_ts_stream_start()
+        self.assertEqual(self.state(),[1,2,0,0,1,0,0])
+    def test_plain_source_selection_from_dma_source_is_valid(self):
+        self.lib.reset(2,0,0);self.lib.tuner_ts_stream_test_source()
+        self.assertEqual(self.state()[1],1)
 if __name__=='__main__':unittest.main()

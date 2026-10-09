@@ -29,6 +29,7 @@ static struct wifi_tx_timing wifi_timing;
 static unsigned streaming,pending,position,sequence,packet_index,stream_over,stream_under,stream_busy;
 static unsigned stream_read_ticks,stream_tx_ticks,stream_poll_ticks,checking_stop,early_output;
 static unsigned stream_dma_reads,stream_dma_ticks;
+static unsigned stream_pattern_checks,stream_pattern_errors,stream_pattern_first;
 static void stream_pipeline_abort(void){}
 static int tuner_ts_stream_active(void){return streaming!=0;}
 static void uart_puts(const char *s){(void)s;if(checking_stop && wifi_timing.active)early_output++;}

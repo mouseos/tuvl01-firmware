@@ -23,6 +23,7 @@ void tuner_ts_stream_frame_size(void);
 void tuner_ts_stream_burst(void);
 void tuner_ts_stream_aggregate(void);
 void tuner_ts_stream_pipeline(void);
+void tuner_ts_stream_dma_source(void);
 void tuner_ts_stream_stop(void);
 int tuner_ts_stream_active(void);
 int tuner_ts_stream_aggregate_active(void);

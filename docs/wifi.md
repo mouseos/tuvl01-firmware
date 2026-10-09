@@ -113,7 +113,21 @@ DMAが完了したバッファだけを送信へ渡し、credit待ちで未送�
 停止・エラー・UART recoveryではDMA要求を先に解除し、channel・routing・RSPI幅を戻します。
 `TS pipeline reads`は完了した取得数、`elapsed_ticks`は取得開始から完了確認までの
 累計時間です。Wi-Fi処理と重なるため、CPU占有時間ではありません。
-疑似TS設定ではDMAを使用しません。
+通常の疑似TS設定ではDMAを使用しません。
+
+`ts-dma-source`は、pipeline有効・長word DMA検証済み・operand cache無効の状態で
+受信不要のRSPI内部ループバックを選択します（`test_source=00000002`）。
+反転した既知TSパターンをDMA送信し、内部反転ループバックで戻った全byteを
+送信前に照合します。異なるbyteがあれば送信せず停止します。
+`TS DMA pattern checks/errors/first_offset`は取得バッファの照合結果です。
+停止時にはループバックを解除します。もう一度選択すると実受信へ戻ります。
+
+```sh
+python tools/uart.py ts-dma-source --port COMx --log <external-log-path>
+```
+
+PCに保存したTSは`python tools/ts_pattern_verify.py <capture.ts>`で
+全byteとバッチ順を検査できます。受信機能・番組・映像の検証にはなりません。
 
 `ts-burst`が有効な場合、送信が進んだ後は次のservice passを続けます。
 各passでUSB・UART・radioを処理し、4ms経過またはcredit待ち・データなし・

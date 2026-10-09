@@ -15,11 +15,16 @@ typedef uint32_t TickType_t;
 static unsigned streaming,pending,position,sequence,packet_index,stream_flags,stream_over,stream_under,stream_busy;
 static unsigned stream_read_ticks,stream_tx_ticks,stream_burst=1,stream_aggregate=1,stream_frame_packets=7;
 static unsigned stream_dma_reads,stream_dma_ticks;
+static unsigned stream_test_source,stream_pattern_checks,stream_pattern_errors,stream_pattern_first;
+static uint8_t packets[6016],spi_regs[40];
+#define S(n) spi_regs[n]
+static void initialize(void){}
+static unsigned ts_pattern_dma_fill(uint8_t *p,unsigned n){memset(p,0x47,n);return 32;}
 static unsigned stream_pipeline,dma_verified=1,dma_long_verified=1,ccr;
 #define R32(a) ccr
 static struct {unsigned active;TickType_t start;} ts_dma;
 static uint8_t *dma_buffer;
-static int done,fifo=1,send_result=1;
+static int done,fifo=1,send_result=1,corrupt;
 static unsigned starts,finishes,sends,stops,syncs,violations,tick,generation,recv_flags[64],recv_values[64];
 static TickType_t xTaskGetTickCount(void){return tick++;}
 static void uart_puts(const char *s){(void)s;}
@@ -28,7 +33,7 @@ static int dma_start(const uint8_t *tx,uint8_t *rx,unsigned n,unsigned inc,unsig
  (void)tx;(void)n;(void)inc;(void)wide;if(ts_dma.active)return -1;
  ts_dma.active=1;dma_buffer=rx;starts++;return 0;
 }
-static int dma_poll(void){if(done==1)memset(dma_buffer,++generation,6016);return done;}
+static int dma_poll(void){if(done==1){if(stream_test_source==2){memcpy(dma_buffer,packets,6016);if(corrupt)dma_buffer[17]^=1;}else memset(dma_buffer,++generation,6016);}return done;}
 static int dma_finish(int result,unsigned report){(void)report;ts_dma.active=0;finishes++;return result;}
 static int end(void){return 0;}
 static int begin(void){if(ts_dma.active)violations++;return 0;}
@@ -50,6 +55,7 @@ static int sdio_wifi_ts(const uint8_t *p,unsigned n,unsigned s,unsigned i,unsign
         exports=r"""
 void reset(void){
  ts_dma.active=0;stream_pipeline_abort();streaming=1;stream_pipeline=1;
+ stream_test_source=stream_pattern_checks=stream_pattern_errors=corrupt=0;stream_pattern_first=~0U;
  pending=position=sequence=packet_index=stream_flags=stream_over=stream_under=stream_busy=0;
  stream_read_ticks=stream_tx_ticks=starts=finishes=sends=stops=syncs=violations=tick=generation=0;
  done=0;fifo=send_result=1;memset(pipe_packets,0,sizeof pipe_packets);
@@ -59,6 +65,8 @@ void complete(int result){done=result;}
 void credit(int result){send_result=result;}
 void input(int result){fifo=result;}
 void stop(void){tuner_ts_stream_stop();}
+void pattern(int bad){stream_test_source=2;stream_dma_pattern_prepare();corrupt=bad;}
+unsigned pattern_stat(unsigned i){unsigned v[]={stream_pattern_checks,stream_pattern_errors,stream_pattern_first,S(2)};return v[i];}
 unsigned get(unsigned i){unsigned v[]={starts,finishes,sends,stops,violations,packet_index,position,pending,pipe_current,pipe_inflight,pipe_ready,stream_over,stream_busy,ts_dma.active,syncs};return v[i];}
 unsigned trace(unsigned i,unsigned which){return which?recv_flags[i]:recv_values[i];}
 """
@@ -101,4 +109,16 @@ unsigned trace(unsigned i,unsigned which){return which?recv_flags[i]:recv_values
         self.assertEqual(self.c.get(3),1);self.assertEqual(self.c.get(2),0)
         self.c.reset();self.c.input(-4);self.c.poll()
         self.assertEqual(self.c.get(3),1);self.assertEqual(self.c.get(0),0)
+    def test_known_pattern_checked_before_send_and_loopback_restored(self):
+        self.c.reset();self.c.pattern(0);self.c.input(-4);self.c.poll()
+        self.assertEqual(self.c.get(0),1) # bypass external FIFO completely
+        self.c.complete(1);self.c.poll()
+        self.assertEqual(self.c.pattern_stat(0),1);self.assertEqual(self.c.pattern_stat(1),0)
+        self.assertEqual(self.c.get(5),32);self.assertEqual(self.c.get(4),0)
+        self.c.stop();self.assertEqual(self.c.pattern_stat(3),0x20)
+    def test_corrupt_dma_buffer_stops_without_sending(self):
+        self.c.reset();self.c.pattern(1);self.c.poll();self.c.complete(1);self.c.poll()
+        self.assertEqual(self.c.pattern_stat(1),1);self.assertEqual(self.c.pattern_stat(2),17)
+        self.assertEqual(self.c.get(2),0);self.assertEqual(self.c.get(3),1)
+        self.assertEqual(self.c.get(13),0);self.assertEqual(self.c.pattern_stat(3),0x20)
 if __name__=='__main__':unittest.main()

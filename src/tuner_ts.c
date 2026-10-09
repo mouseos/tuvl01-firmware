@@ -29,7 +29,9 @@ static unsigned stream_test_source;
 static unsigned stream_frame_packets=7;
 static unsigned stream_pipeline;
 static unsigned stream_dma_ticks,stream_dma_reads;
+static unsigned stream_pattern_checks,stream_pattern_errors,stream_pattern_first;
 static void stream_pipeline_abort(void);
+static void stream_dma_pattern_prepare(void);
 int tuner_ts_stream_active(void){return streaming!=0;}
 void tuner_ts_stream_wifi_ticks(unsigned ticks){if(streaming)stream_poll_ticks+=ticks;}
 static void field(const char *name,unsigned number);
@@ -44,7 +46,9 @@ void tuner_ts_stream_stop(void){
     field("TS timing read_ticks=",stream_read_ticks);field(" tx_ticks=",stream_tx_ticks);
     field(" poll_ticks=",stream_poll_ticks);uart_puts("\n");
     field("TS pipeline reads=",stream_dma_reads);field(" elapsed_ticks=",stream_dma_ticks);
-    uart_puts("\nTS stream end status=stopped\n");
+    uart_puts("\n");
+    field("TS DMA pattern checks=",stream_pattern_checks);field(" errors=",stream_pattern_errors);
+    field(" first_offset=",stream_pattern_first);uart_puts("\nTS stream end status=stopped\n");
 }
 static void field(const char *name,unsigned number){uart_puts(name);uart_hex(number);}
 static void registers(void){
@@ -301,9 +305,12 @@ int tuner_ts_read(uint8_t *buffer,unsigned max_packets){return read_packets(buff
 void tuner_ts_stream_start(void){
     uint8_t v;uart_puts("TS stream start\n");
     if(streaming){uart_puts("TS stream begin status=refused-active\n");return;}
-    if(stream_pipeline && !stream_test_source &&
+    if((stream_test_source==2 || (stream_pipeline && !stream_test_source)) &&
        (!dma_verified || !dma_long_verified || (R32(0xfffc1000UL)&1U))){
         uart_puts("TS stream begin status=refused-dma-state\n");return;
+    }
+    if(stream_test_source==2 && !stream_pipeline){
+        uart_puts("TS stream begin status=refused-pipeline-disabled\n");return;
     }
     if(stream_test_source){
         if(ts_pattern_fill(packets,sizeof packets)!=32){uart_puts("TS stream begin status=failed\n");return;}
@@ -311,9 +318,11 @@ void tuner_ts_stream_start(void){
         uart_puts("TS stream begin status=failed\n");return;
     }
     stream_pipeline_abort();
+    if(stream_test_source==2)stream_dma_pattern_prepare();
     pending=position=sequence=packet_index=stream_over=stream_under=stream_busy=stream_flags=0;
     stream_read_ticks=stream_tx_ticks=stream_poll_ticks=0;
     stream_dma_ticks=stream_dma_reads=0;
+    stream_pattern_checks=stream_pattern_errors=0;stream_pattern_first=~0U;
     field("TS stream test_source=",stream_test_source);uart_puts("\n");
     field("TS stream packets_per_datagram=",stream_frame_packets);
     field(" aggregate=",stream_aggregate);field(" burst=",stream_burst);uart_puts("\n");
@@ -323,7 +332,7 @@ void tuner_ts_stream_start(void){
 }
 void tuner_ts_stream_test_source(void){
     if(streaming){uart_puts("TS test source end status=refused-active\n");return;}
-    stream_test_source^=1;
+    stream_test_source=stream_test_source==1?0:1;
     field("TS test source selected=",stream_test_source);uart_puts("\n");
     uart_puts("TS test source end status=selected\n");
 }
@@ -350,9 +359,24 @@ void tuner_ts_stream_aggregate(void){
 /* Two independently owned buffers: current is readable by TX, inflight only
  * by DMA, ready is complete but not yet handed to TX. Index 2 means empty. */
 static uint8_t pipe_packets[2][TUNER_TS_PACKET*TUNER_TS_MAX_PACKETS] __attribute__((aligned(4)));
+static uint8_t pipe_pattern_tx[TUNER_TS_PACKET*TUNER_TS_MAX_PACKETS] __attribute__((aligned(4)));
+static void stream_dma_pattern_prepare(void){
+    ts_pattern_dma_fill(packets,sizeof packets);
+    for(unsigned n=0;n<sizeof packets;n++)pipe_pattern_tx[n]=packets[n]^0xffU;
+    initialize();
+}
+void tuner_ts_stream_dma_source(void){
+    if(streaming){uart_puts("TS DMA source end status=refused-active\n");return;}
+    if(stream_test_source!=2 && (!stream_pipeline || !dma_verified || !dma_long_verified || (R32(0xfffc1000UL)&1U))){
+        uart_puts("TS DMA source end status=refused-dma-state\n");return;
+    }
+    stream_test_source=stream_test_source==2?0:2;
+    field("TS DMA source selected=",stream_test_source);uart_puts("\nTS DMA source end status=selected\n");
+}
 static unsigned pipe_current=2,pipe_inflight=2,pipe_ready=2,pipe_gap,pipe_flags[2];
 static void stream_pipeline_abort(void){
     if(ts_dma.active)(void)dma_finish(-1,0);
+    if(stream_test_source==2){S(0)=8;S(2)=0x20;}
     pipe_current=pipe_inflight=pipe_ready=2;pipe_gap=0;
     pipe_flags[0]=pipe_flags[1]=0;
 }
@@ -365,6 +389,11 @@ void tuner_ts_stream_pipeline(void){
     field("TS pipeline selected=",stream_pipeline);uart_puts("\nTS pipeline end status=selected\n");
 }
 static int pipe_begin(unsigned index){
+    if(stream_test_source==2){
+        S(2)=0x21;begin();
+        if(dma_start(pipe_pattern_tx,pipe_packets[index],sizeof pipe_packets[index],1,1))return failure();
+        pipe_flags[index]=0;pipe_inflight=index;return 1;
+    }
     uint8_t response[5],discard;
     if(status(response))return -1;
     int result=tuner_ts_classify(response[4]);
@@ -384,6 +413,16 @@ static int stream_pipeline_poll(void){
             if(done>0){stream_dma_reads++;stream_dma_ticks+=(TickType_t)(xTaskGetTickCount()-ts_dma.start);}
             if(dma_finish(done<0?-1:0,1) || end() || pipe_ready!=2){
                 tuner_ts_stream_stop();uart_puts("TS stream failure=pipeline-dma\n");return 0;
+            }
+            if(stream_test_source==2){
+                stream_pattern_checks++;
+                for(unsigned n=0;n<sizeof packets;n++)if(pipe_packets[pipe_inflight][n]!=packets[n]){
+                    if(!stream_pattern_errors)stream_pattern_first=n;
+                    stream_pattern_errors++;
+                }
+                if(stream_pattern_errors){
+                    tuner_ts_stream_stop();uart_puts("TS stream failure=dma-pattern\n");return 0;
+                }
             }
             pipe_ready=pipe_inflight;pipe_inflight=2;
         }
@@ -427,7 +466,7 @@ static int stream_pipeline_poll(void){
 }
 int tuner_ts_stream_poll(void){
     if(!streaming)return 0;
-    if(stream_pipeline && !stream_test_source)return stream_pipeline_poll();
+    if(stream_pipeline && stream_test_source!=1)return stream_pipeline_poll();
     if(!pending){
         TickType_t before=xTaskGetTickCount();
         int n=stream_test_source?32:read_packets(packets,32,1);
