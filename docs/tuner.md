@@ -26,6 +26,8 @@ python tools/tune.py --port COMx --profile profiles/uhf-ch19-full.json --log log
 受信帯域、CRC、範囲とmodeごとのDTV設定をPC側とtarget側で検査します。
 `sequence-complete`は設定処理の完了であり、RF lock・TS品質を保証しません。
 `tmcc`、`tuner-fec`、`tuner-quality`、`tuner-monitor`で受信状態を確認してください。
+`tuner-fec`はFEC状態に加え、bank `0x61` の `0xA1` とbank `0x60` の
+`0xD6`～`0xD8`を読出しのみで表示します。表示は生値で、dB・dBmへの換算は行いません。
 
 TS入力はRSPI1とDMAを使用します。`ts-dma`のloopback成功は放送TSの受信成功とは別です。
 `ts-probe`やcaptureで188B同期、TEI、continuity、FIFO状態を確認します。
