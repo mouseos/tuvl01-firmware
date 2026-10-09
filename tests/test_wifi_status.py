@@ -60,6 +60,7 @@ static unsigned wifi_ap_active,wifi_peer_state,wifi_peer_activate_pending;
 static uint32_t wifi_status_rx;
 static unsigned wifi_tc2_free,wifi_tc3_free;
 static unsigned wifi_tx_fault,wifi_hif_ready=1,wifi_verbose,wifi_tc4_free,wifi_tc1_free,wifi_tc5_free;
+static void bench_credit_returned(unsigned released){(void)released;}
 static uint8_t response[88];static unsigned reads,words,failed,invalid,legacy_phase;
 static int fifo_read(unsigned a,uint8_t *b,unsigned n){
     if(a!=16 || n!=88)return -1;

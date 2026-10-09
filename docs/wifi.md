@@ -74,6 +74,12 @@ python tools/wifi_rx_test.py --interface "Wi-Fi" --restore-profile EXISTING_PROF
 ```
 
 送信側の完了数とPC到達数は別です。往復echoの速度も片方向帯域とは区別してください。
+TX試験のUARTログには`WIFI TX bench timing`を出力します。
+`kind=0`はSDIO書込み、`kind=1`は同時送信1件での書込み開始からクレジット返却までの時間です。
+単位はtimer countで、`counts_per_tick`は1msあたりのcountです。
+返却時間は書込み時間を含み、PCの受信時刻とは異なります。
+別のTC1通信が混ざった試料は`credit_excluded`、終了時に返却未観測の試料は`credit_pending`へ示します。
+複数件送信では`kind=1`を記録しません。`overflow`が非ゼロの統計は平均値に使わないでください。
 
 `tools/uart.py --help`に全commandを列挙しています。
 `wifi-stats`、`wifi-nic-stats`、`wifi-station-stats`、`wifi-link`は状態確認、

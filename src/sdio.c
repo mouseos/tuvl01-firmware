@@ -98,6 +98,20 @@ static unsigned wifi_io_enabled;
 static unsigned wifi_raw_tx_mode,wifi_qos_tc=1;
 static struct wifi_io_timing wifi_io;
 static struct wifi_service_timing wifi_service;
+/* Direct UDP benchmark: kind0 is SDIO write, kind1 is the complete
+ * single-outstanding-credit interval. Neither proves over-air delivery. */
+static struct wifi_io_timing wifi_bench_io;
+static uint32_t wifi_bench_credit_begin;
+static unsigned wifi_bench_credit_pending,wifi_bench_credit_excluded;
+static void bench_credit_other(void){
+    if(wifi_bench_credit_pending){wifi_bench_credit_pending=0;++wifi_bench_credit_excluded;}
+}
+static void bench_credit_returned(unsigned released){
+    if(wifi_bench_io.active && wifi_bench_credit_pending && released && wifi_tc1_free==14){
+        wifi_io_record(&wifi_bench_io,1,1332,wifi_bench_credit_begin,board_time_counts(),0);
+        wifi_bench_credit_pending=0;
+    }
+}
 static uint32_t wifi_io_yields_begin,wifi_io_irq_begin,wifi_io_ready_begin;
 static uint32_t wifi_io_yields,wifi_io_irq_waits,wifi_io_irq_ready;
 static struct wifi_ht_peer wifi_peer_ht;
@@ -654,6 +668,7 @@ static int tx_poll(void){
             if(extra)wifi_probe_released+=released+video_released+voice_released+data_released+group_released;
             wifi_tc1_free+=data_released;wifi_tc5_free+=group_released;
             wifi_tc2_free+=video_released;wifi_tc3_free+=voice_released;
+            bench_credit_returned(data_released);
             if(wifi_timing_enabled && data_released)
                 wifi_tx_timing_credit(&wifi_timing,wifi_tc1_free,xTaskGetTickCount());
         }
@@ -2083,6 +2098,7 @@ static int data_reply(void){
     packet[3]=(group?5:1)<<2;packet[4]=14;packet[5]=0x10;
     packet[10]=group?0xff:0;packet[11]=0x20;
     if(wifi_timing_enabled && !group)wifi_tx_timing_other(&wifi_timing);
+    if(!group)bench_credit_other();
     --*credit;
     if(extended_write(0x28,packet,padded,0)){wifi_tx_fault=1;return -1;}
     ++wifi_data_tx;
@@ -2184,11 +2200,23 @@ failed:
 static void bench_finish(const char *status){
     if(!wifi_bench_active)return;
     wifi_bench_active=0;
+    wifi_io_stop(&wifi_bench_io,board_time_counts());
     field("WIFI TX bench packets=",wifi_bench_sent);
     field(" payload_bytes=",wifi_bench_sent*1332U);
     field(" elapsed_ticks=",xTaskGetTickCount()-wifi_bench_begin);
     field(" stalls=",wifi_bench_stalls);field(" failed=",wifi_bench_failed);
-    uart_puts("\nWIFI TX bench end status=");uart_puts(status);uart_puts("\n");
+    uart_puts("\n");
+    field("WIFI TX bench timing counts=",wifi_bench_io.duration);
+    field(" counts_per_tick=",(unsigned)R16(0xfffec006)+1U);
+    field(" credit_pending=",wifi_bench_credit_pending);
+    field(" credit_excluded=",wifi_bench_credit_excluded);uart_puts("\n");
+    for(unsigned kind=0;kind<2;kind++){
+        const struct wifi_io_bin *b=&wifi_bench_io.bin[kind];
+        field("WIFI TX bench timing kind=",kind);field(" calls=",b->calls);field(" sum=",b->ticks);
+        field(" min=",b->calls?b->minimum:0);field(" max=",b->maximum);
+        field(" failed=",b->failed);field(" overflow=",b->overflow);uart_puts("\n");
+    }
+    uart_puts("WIFI TX bench end status=");uart_puts(status);uart_puts("\n");
 }
 void sdio_wifi_tx_bench_stop(void){bench_finish("interrupted");}
 void sdio_wifi_tx_bench_start(void){
@@ -2197,6 +2225,8 @@ void sdio_wifi_tx_bench_start(void){
         uart_puts("WIFI TX bench begin status=refused-state\n");return;
     }
     wifi_bench_sent=wifi_bench_stalls=wifi_bench_failed=0;
+    wifi_bench_credit_pending=wifi_bench_credit_excluded=0;
+    wifi_io_start(&wifi_bench_io,board_time_counts());
     for(unsigned i=12;i<sizeof wifi_bench_body;i++)wifi_bench_body[i]=i%251;
     wifi_bench_body[0]='T';wifi_bench_body[1]='W';wifi_bench_body[2]='T';wifi_bench_body[3]='1';
     for(unsigned i=0;i<4;i++)wifi_bench_body[8+i]=sizeof wifi_bench_body>>(24-i*8);
@@ -2221,8 +2251,15 @@ void sdio_wifi_tx_bench_poll(void){
     packet[0]=logical;packet[1]=logical>>8;packet[2]=14;packet[3]=4;
     packet[4]=14;packet[5]=0x10;packet[11]=0x20;
     for(unsigned i=logical;i<sizeof packet;i++)packet[i]=0;
+    uint32_t write_begin=board_time_counts();
+    if(wifi_ts_window==1 && wifi_tc1_free==14){
+        wifi_bench_credit_begin=write_begin;wifi_bench_credit_pending=1;
+    }
     --wifi_tc1_free;
-    if(extended_write(0x28,packet,sizeof packet,0)){
+    int write_result=extended_write(0x28,packet,sizeof packet,0);
+    wifi_io_record(&wifi_bench_io,0,sizeof packet,write_begin,board_time_counts(),write_result!=0);
+    if(write_result){
+        bench_credit_other();
         wifi_tx_fault=1;wifi_bench_failed=1;bench_finish("failed");return;
     }
     ++wifi_bench_sent;++wifi_data_tx;
