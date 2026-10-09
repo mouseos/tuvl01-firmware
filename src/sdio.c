@@ -2024,7 +2024,8 @@ int sdio_wifi_ts_pair(const unsigned char *data,unsigned count,unsigned sequence
     wifi_data_tx+=frames;return (int)count;
 }
 int sdio_wifi_ts(const unsigned char *data,unsigned count,unsigned sequence,unsigned index,unsigned flags){
-    static uint8_t body[1332],packet[1536],raw_packet[1536];
+    static uint8_t packet[1536],raw_packet[1536];
+    uint8_t *body=packet+16+42;
     if(!data || !count || count>7)return -1;
     if(!wifi_ap_active || !wifi_peer_active || wifi_tx_fault)return 0;
     if(sdio_wifi_raw_tx_selected()==2 && (!wifi_ht_enabled || !wifi_ht_active(&wifi_peer_ht)))return -1;

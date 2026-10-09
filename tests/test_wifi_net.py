@@ -64,6 +64,26 @@ class Network(unittest.TestCase):
         self.assertEqual(packet[34:38],struct.pack('!HH',4202,4202))
         self.assertEqual(self.c.wifi_net_udp(body,len(body),4202,MAC,PEER,out,41+len(body)),0)
         self.assertEqual(self.c.wifi_net_udp(body,1473,4202,MAC,PEER,out,1514),0)
+    def test_in_place_udp_matches_external_body_at_unaligned_addresses(self):
+        pack=self.c.wifi_net_udp;pack.restype=ctypes.c_uint
+        pack.argtypes=[ctypes.c_void_p,ctypes.c_uint,ctypes.c_uint,ctypes.c_void_p,
+            ctypes.c_void_p,ctypes.c_void_p,ctypes.c_uint]
+        for length in [0,1,3,64,1332,1472]:
+            body=bytes((i*13+5)&255 for i in range(length))
+            reference=ctypes.create_string_buffer(b'\xa5'*1514,1514)
+            n=pack(body,length,4202,MAC,PEER,reference,1514)
+            for offset in range(4):
+                out=ctypes.create_string_buffer(b'\xa5'*1522,1522)
+                pointer=ctypes.addressof(out)+offset
+                ctypes.memmove(pointer+42,body,length)
+                self.assertEqual(pack(pointer+42,length,4202,MAC,PEER,pointer,1514),n)
+                packet=out.raw[offset:offset+n]
+                self.assertEqual(packet,reference.raw[:n]);self.verify_ip_udp(packet)
+                self.assertEqual(out.raw[:offset],b'\xa5'*offset)
+                self.assertEqual(out.raw[offset+n:],b'\xa5'*(1522-offset-n))
+                before=out.raw
+                self.assertEqual(pack(pointer+42,length,4202,MAC,PEER,pointer,n-1),0)
+                self.assertEqual(out.raw,before)
     def test_dhcp_rejects_malformed_and_other_server(self):
         for b in [dhcp(3,bytes([54,4])+b'\xc0\xa8\x4a\x03'),dhcp(3),
                   dhcp(1,b'\x35\x01\x01'),dhcp(1,b'\x32\x05\x01'),

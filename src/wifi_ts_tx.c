@@ -4,7 +4,6 @@
 unsigned wifi_ts_tx_pack_forwarding(const uint8_t *data,unsigned count,unsigned sequence,
     unsigned index,unsigned flags,const uint8_t *mac,const uint8_t *peer,
     uint8_t *out,unsigned capacity,unsigned more_data){
-    static uint8_t body[16+7*188];
     if(!data || !mac || !peer || !out || !count || count>14 || more_data>1)return 0;
     /* Ethernet/IP/UDP=42 bytes, HIF=16, TTS1=16. Preflight the whole
      * transfer before touching output. A zero DWORD must fit after frames. */
@@ -15,6 +14,7 @@ unsigned wifi_ts_tx_pack_forwarding(const uint8_t *data,unsigned count,unsigned 
     unsigned offset=0;
     while(count){
         unsigned n=count>7?7:count;
+        uint8_t *body=out+offset+16+42;
         /* Payload bytes are overwritten below. Clear only the HIF fields,
          * frame alignment and trailing terminator/padding. */
         for(unsigned i=0;i<16;i++)out[offset+i]=0;

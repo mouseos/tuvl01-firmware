@@ -117,7 +117,7 @@ unsigned wifi_net_udp(const uint8_t *body,unsigned length,unsigned port,
     if(!body || !mac || !peer || !out || !port || port>65535 || length>1472 || cap<42+length)return 0;
     ethernet(out,peer,mac,0x0800);ipv4(out,WIFI_NET_PEER_IP,17,8+length);
     uint8_t *u=out+34;putword(u,port);putword(u+2,port);putword(u+4,8+length);putword(u+6,0);
-    copy(u+8,body,length);
+    if(body!=u+8)copy(u+8,body,length);
     unsigned c=(~udp_sum(out+14,u,8+length))&0xffff;putword(u+6,c?c:0xffff);
     return 42+length;
 }
