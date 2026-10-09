@@ -19,7 +19,7 @@ def main():
             udp.bind((client,4204));udp.settimeout(.2);t=Transport(a.uart_port,log)
             started=False
             try:
-                t.write(b'i');t.expect('UART application');t.write(b'{')
+                t.write(b'i');t.expect('UART application');t.write(b'<')
                 status=t.wait(lambda x:x.startswith('WIFI TX bench begin status='))
                 if status!='WIFI TX bench begin status=active':raise RuntimeError(status)
                 started=True;start=time.monotonic();first=last_time=None
@@ -52,7 +52,7 @@ def main():
             finally:
                 payload_path.write_bytes(b''.join(packets.values()))
                 if started:
-                    t.write(b'}');t.write(b'i');t.expect('UART application')
+                    t.write(b'>');t.write(b'i');t.expect('UART application')
                 t.ser.close()
     wifi_connect.data_test=diagnostic;saved=sys.argv
     sys.argv=[saved[0],'--interface',a.interface,'--restore-profile',a.restore_profile,'--seconds','30','--data','--mtu']

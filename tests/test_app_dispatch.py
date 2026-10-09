@@ -1,5 +1,6 @@
 """Compile the real UART command routes to detect overlapping operations."""
 import ctypes
+import ast
 import pathlib
 import re
 import subprocess
@@ -62,6 +63,22 @@ class AppDispatch(unittest.TestCase):
     def test_benchmark_has_independent_commands(self):
         self.assertEqual(self.route(ord('<')), {'sdio_wifi_tx_bench_start': 1})
         self.assertEqual(self.route(ord('>')), {'sdio_wifi_tx_bench_stop': 1})
+
+    def test_pc_download_tool_uses_benchmark_routes(self):
+        tree = ast.parse((ROOT / 'tools/wifi_tx_test.py').read_text())
+        operations = []
+        for node in ast.walk(tree):
+            if (isinstance(node, ast.Call) and
+                    isinstance(node.func, ast.Attribute) and
+                    isinstance(node.func.value, ast.Name) and
+                    node.func.value.id == 't' and node.func.attr == 'write' and
+                    len(node.args) == 1 and isinstance(node.args[0], ast.Constant)):
+                data = node.args[0].value
+                if isinstance(data, bytes) and data != b'i':
+                    self.assertEqual(len(data), 1)
+                    operations.append(self.route(data[0]))
+        self.assertCountEqual(operations, [
+            {'sdio_wifi_tx_bench_start': 1}, {'sdio_wifi_tx_bench_stop': 1}])
 
     def test_restart_guard_receives_active_stream_and_benchmark_state(self):
         self.c.clear()

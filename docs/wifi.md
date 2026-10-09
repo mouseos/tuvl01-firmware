@@ -63,6 +63,18 @@ cleanup未解決の場合はfailure latchで再試行を拒否します。
 
 ## 診断インターフェース
 
+チューナー・TS処理を使わない片方向UDP速度試験は、AP起動後に実行します。
+送信試験は1,332バイトの既知パターンを10秒送り、PCで内容と欠落を検査します。
+受信試験はPCから指定した速度で送り、application側の到達数を検査します。
+両ツールは一時接続後、指定した既存Wi-Fi profileへ戻ります。
+
+```powershell
+python tools/wifi_tx_test.py --interface "Wi-Fi" --restore-profile EXISTING_PROFILE --uart-port COMx --output logs/wifi-tx.json
+python tools/wifi_rx_test.py --interface "Wi-Fi" --restore-profile EXISTING_PROFILE --uart-port COMx --mbps 5 --seconds 10 --output logs/wifi-rx.json
+```
+
+送信側の完了数とPC到達数は別です。往復echoの速度も片方向帯域とは区別してください。
+
 `tools/uart.py --help`に全commandを列挙しています。
 `wifi-stats`、`wifi-nic-stats`、`wifi-station-stats`、`wifi-link`は状態確認、
 `scan`は受信scan、`wifi-rx-*`は受信診断です。
