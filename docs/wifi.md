@@ -219,6 +219,12 @@ Use `--burst 1` (default), `4`, or `8` to limit direct UDP packets submitted per
 
 ### 送信中の受信品質の有限観測
 
+停止中の`python tools/uart.py tuner-quality --port COMx --log <external-log-path>`は、
+full demodulatorのLayer A/BのBER・PERカウンタを個別に選択して表示します。
+各カウンタはready待ちを最大1秒に制限し、3byteのcountと2byteのdenominatorを
+再読出しして一致を確認します。分母0は無効値として表示します。
+測定後は変更した6レジスタを復元・確認します。出力は生カウンタで、比率やdBではありません。
+
 `quality-watch`でread-onlyサンプラを開始します。UART表示を止め、service passごとに
 RIICで1レジスタだけを読み（個々のtransactionは既存のRTOS待機を含む）、1秒以上の間隔で最大16組・30秒以内に終了します。
 `quality-watch-dump`は転送を止めて記録を表示します。正常時はサンプラからUARTを表示しませんが、RIIC失敗時は既存のfailure診断が出ます。

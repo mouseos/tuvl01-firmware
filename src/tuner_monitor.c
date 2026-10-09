@@ -51,7 +51,7 @@ void tuner_fec_snapshot(void){
 failed:uart_puts("FEC snapshot end status=i2c-failed\n");
 }
 void tuner_quality(void){
-    /* Fixed full/partial Layer-A measurement; restore every saved control.
+    /* Full-demodulator Layer-A/B measurement; restore every saved control.
      * Raw counts only: no unverified rate, dB or signal-quality conversion. */
     static const uint8_t control[]={0x8b,0x8e,0x90,0x91,0x92,0x93};
     uint8_t saved[sizeof control],v,gate[3],cn[2],raw[5],again[5];
@@ -79,27 +79,38 @@ void tuner_quality(void){
     changed=1;
     for(unsigned n=0;n<sizeof control;n++)
         if(tuner_write_register(0x61,control[n],setting[n]))goto finish;
-    start=xTaskGetTickCount();
-    do{
-        if(tuner_read_register(0x61,0xc3,&v))goto finish;
-        if((v&0x30)==0x30)break;
-        vTaskDelay(pdMS_TO_TICKS(10));
-    }while((TickType_t)(xTaskGetTickCount()-start)<pdMS_TO_TICKS(1000));
-    field("QUALITY Layer-A C3=",v);uart_puts("\n");
-    if((v&0x30)!=0x30){result="counter-not-ready";goto finish;}
-    for(unsigned attempt=0;attempt<3;attempt++){
-        unsigned mismatch=0;
-        for(unsigned n=0;n<5;n++)if(tuner_read_register(0x61,0xc4+n,raw+n))goto finish;
-        for(unsigned n=0;n<5;n++){
-            if(tuner_read_register(0x61,0xc4+n,again+n))goto finish;
-            if(raw[n]!=again[n])mismatch=1;
+    unsigned zero_denominator=0;
+    for(unsigned per=0;per<2;per++)for(unsigned layer=0;layer<2;layer++){
+        unsigned selector=layer+1,reg=per?0x93:0x90;
+        uint8_t selected=per?((saved[5]&0x7c)|0x80|selector):((setting[2]&0xfc)|selector);
+        uint8_t ready_mask=(per?0x10:0x20)>>(2*layer);
+        if(tuner_write_register(0x61,reg,selected))goto finish;
+        start=xTaskGetTickCount();
+        do{
+            if(tuner_read_register(0x61,0xc3,&v))goto finish;
+            if(v&ready_mask)break;
+            vTaskDelay(pdMS_TO_TICKS(10));
+        }while((TickType_t)(xTaskGetTickCount()-start)<pdMS_TO_TICKS(1000));
+        uart_puts(layer?"QUALITY Layer-B":"QUALITY Layer-A");
+        uart_puts(per?" PER":" BER");field(" C3=",v);field(" ready_mask=",ready_mask);uart_puts("\n");
+        if(!(v&ready_mask)){result="counter-not-ready";goto finish;}
+        for(unsigned attempt=0;attempt<3;attempt++){
+            unsigned mismatch=0;
+            for(unsigned n=0;n<5;n++)if(tuner_read_register(0x61,0xc4+n,raw+n))goto finish;
+            for(unsigned n=0;n<5;n++){
+                if(tuner_read_register(0x61,0xc4+n,again+n))goto finish;
+                if(raw[n]!=again[n])mismatch=1;
+            }
+            if(!mismatch)break;
+            if(attempt==2){result="counter-unstable";goto finish;}
         }
-        if(!mismatch)break;
-        if(attempt==2){result="counter-unstable";goto finish;}
+        uart_puts(layer?"QUALITY Layer-B":"QUALITY Layer-A");uart_puts(per?" PER":" BER");
+        field(" count=",((unsigned)raw[0]<<16)|((unsigned)raw[1]<<8)|raw[2]);
+        field(" denominator=",((unsigned)raw[3]<<8)|raw[4]);
+        uart_puts((raw[3]|raw[4])?" status=counts-raw\n":" status=zero-denominator\n");
+        if(!(raw[3]|raw[4]))zero_denominator=1;
     }
-    field("QUALITY Layer-A count=",((unsigned)raw[0]<<16)|((unsigned)raw[1]<<8)|raw[2]);
-    field(" denominator=",((unsigned)raw[3]<<8)|raw[4]);uart_puts("\n");
-    result=(raw[3]|raw[4])?"counts-raw":"zero-denominator";
+    result=zero_denominator?"zero-denominator":"counts-raw";
 finish:
     if(changed){
         unsigned bad=0;
