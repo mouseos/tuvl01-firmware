@@ -116,14 +116,25 @@ TS payload長と同期byteを検査します。UDPのため再送や到達保証
 
 ## TVTest
 
+TVTestのディレクトリでUDP入力ドライバーと受信ポートを指定して起動します。
+
+```powershell
+.\TVTest.exe /d BonDriver_UDP.dll /port 1234
+```
+
+[/d・/portの仕様](https://github.com/DBCTRADO/TVTest/blob/develop/doc/TVTest.txt)はTVTestの説明を参照してください。
+次にファームウェアのリポジトリでPC受信ツールを実行します。
+
 ```powershell
 python tools/ts_receive.py --port COMx --output logs/capture.ts --log logs/stream.bin --seconds 60 --forward-port 1234
 ```
 
-TVTestのUDP入力をlocalhostの指定portへ合わせます。
+`/port`と`--forward-port`には同じ番号を指定します。
 PCツールはTTS1 headerを除去し、TS payloadを変更せず転送します。
 対応input driver、decoder、必要な正規のCAS環境はPC側で準備してください。
 本firmwareとPCツールは放送のdescramblingを実装しません。
+
+## Wi-Fi停止中の品質測定
 
 Wi-Fiを初期化し通信を停止した状態で、`wifi-quiet-quality`を実行できます。
 NICへ電源モード1を指示し、最大5秒でWLAN_READYの消失を確認します。
