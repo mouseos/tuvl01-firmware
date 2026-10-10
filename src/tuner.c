@@ -252,13 +252,13 @@ void tuner_rf_switch(void){
         uart_puts(mode=='h'?"RF switch end status=pb16-high\n":"RF switch end status=pb16-low\n");
         return;
     }
-    if(mode!='s' && mode!='i' && mode!='a'){uart_puts("RF switch end status=rejected\n");return;}
+    if(mode!='s' && mode!='i' && mode!='a' && mode!='z'){uart_puts("RF switch end status=rejected\n");return;}
     if((ior&RFSW_BITS)!=RFSW_BITS || (cr&0x3300)){
         uart_puts("RF switch end status=refused-not-configured\n");return;
     }
     /* 's' = stock 1/0 (PB14=1, PB15=0); 'i' = inverse 0/1 (the stock sleep
      * state: the tuner stops answering on I2C); 'a' = 1/1 (only PB15 raised). */
-    unsigned want=mode=='s'?0x4000U:mode=='i'?0x8000U:0xc000U;
+    unsigned want=mode=='s'?0x4000U:mode=='i'?0x8000U:mode=='z'?0U:0xc000U;
     R16(RFSW_PBDR0)=(uint16_t)((R16(RFSW_PBDR0)&~RFSW_BITS)|want);
     unsigned after=R16(RFSW_PBDR0);
     value("RF switch after PBDR0=",after);uart_puts("\n");
@@ -266,7 +266,8 @@ void tuner_rf_switch(void){
         uart_puts("RF switch end status=verify-failed\n");return;
     }
     uart_puts(mode=='s'?"RF switch end status=stock\n":
-              mode=='i'?"RF switch end status=inverse\n":"RF switch end status=alt\n");
+              mode=='i'?"RF switch end status=inverse\n":
+              mode=='z'?"RF switch end status=zero\n":"RF switch end status=alt\n");
 }
 
 static int prepare_bank(unsigned bank){
