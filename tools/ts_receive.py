@@ -64,7 +64,8 @@ def receive(port,output,log_path,seconds,forward_port=None,quality_watch=False):
             # 17 Mbps full-segment TS fills 1 MiB in about half a second; a larger buffer
             # keeps a short PC-side stall from showing up as lost datagrams.
             udp.setsockopt(socket.SOL_SOCKET,socket.SO_RCVBUF,16*1048576);udp.bind(('192.168.74.2',4202));udp.settimeout(.25)
-            stats['socket_receive_buffer_bytes']=udp.getsockopt(socket.SOL_SOCKET,socket.SO_RCVBUF)
+            granted=udp.getsockopt(socket.SOL_SOCKET,socket.SO_RCVBUF)
+            if isinstance(granted,int):stats['socket_receive_buffer_bytes']=granted
             t=Transport(port,log)
             try:
                 t.write(b'i');t.expect('UART application')
