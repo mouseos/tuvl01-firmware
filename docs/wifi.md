@@ -261,3 +261,19 @@ activeのbit0/bit1は取得開始/終了時のTS送信状態、tx_before/after�
 観測は送信へ負荷を加えるため、実測速度も同時に確認してください。
 設定・resetを書かないため、カウンタの選択条件はrawに記録した現状のままです。
 再読出し一致は原子的なラッチの証拠ではなく、未検証のBER比率やdBへ変換しません。
+
+
+### 高速送信の構成（フルセグ実測）
+
+RAM実行のbuildで、次の順に設定すると、open APからPCへの実TS転送が約17 Mbps（40秒、データグラム欠落0）になりました。
+各commandは`tools/uart.py`のcommand名です。順序が重要です。
+
+1. `tuner-init`、選局（フルセグprofile）、`ts-output`、`ts-dma`、`ts-clock-max`、`ts-dma-long`、`icache`
+2. `wifi`、`wifi-clock`、`wifi-width`（4bit）、`wifi-read-poll`、`wifi-write-poll`、`wifi-poll-budget`
+3. `mac`、`capability`、`board`の後に`wifi-irq`（HIF初期化後でないと拒否されます）
+4. `ts-pipeline`、`ts-burst`、`ts-aggregate`、`ap`
+
+direct UDP試験（`wifi_tx_test.py`）では、既定0.69 Mbps、read/write poll 2.9、`wifi-irq` 8.5、`icache`追加で15 Mbpsでした。
+命令キャッシュを有効にしないとIRQ待ちでも8.5 Mbpsで止まります。HT・AMPDU・`wifi-rate`は速度に影響しませんでした。
+実TSでは、`ts-pipeline` 7.7、`ts-burst` 15.2、`ts-aggregate` 17.3 Mbpsです。受信環境により結果は変わります。
+放送がスクランブルされている場合、PC側でCAS（復号）が必要です。復号した映像の確認は行っていません。
