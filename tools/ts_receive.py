@@ -1,5 +1,5 @@
 """Receive real TS UDP from an already connected TUVL01 AP; UART starts/stops it."""
-import argparse,hashlib,json,pathlib,re,socket,struct,time
+import argparse,hashlib,json,os,pathlib,re,socket,struct,time
 from uart import Transport
 from ts_capture import inspect
 def decode(data):
@@ -74,9 +74,23 @@ def receive(port,output,log_path,seconds,forward_port=None,quality_watch=False):
                 t.write(b'B')
                 t.expect('TS stream begin status=active')
                 started=time.monotonic();end=started+seconds
-                while time.monotonic()<end:
-                    try:accept(*udp.recvfrom(2048))
-                    except socket.timeout:continue
+                # Optional uplink keep-alive (TUVL01_KEEPALIVE_MS=10): a station that sends nothing
+                # may doze between frames, and the AP does not buffer for it.
+                keepalive=None;next_ka=0.0;ka_period=float(os.environ.get('TUVL01_KEEPALIVE_MS','0') or 0)/1000.0
+                if ka_period>0:
+                    keepalive=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);keepalive.bind(('192.168.74.2',0))
+                    keepalive.setsockopt(socket.SOL_SOCKET,socket.SO_RCVBUF,65536)
+                    stats['keepalive_ms']=ka_period*1000;stats['keepalive_sent']=0
+                try:
+                    while time.monotonic()<end:
+                        if keepalive is not None and time.monotonic()>=next_ka:
+                            try:keepalive.sendto(b'K',('192.168.74.1',4201));stats['keepalive_sent']+=1
+                            except OSError:pass
+                            next_ka=time.monotonic()+ka_period
+                        try:accept(*udp.recvfrom(2048))
+                        except socket.timeout:continue
+                finally:
+                    if keepalive is not None:keepalive.close()
                 stats['seconds']=time.monotonic()-started
             finally:
                 try:

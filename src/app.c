@@ -155,6 +155,7 @@ static void usb_task(void *p) {
         if(c==28)tuner_gpio_drive();
         if(c==29)tuner_gpio_release();
         if(c==30)tuner_ts_group_bench();
+        if(c==31)sdio_wifi_tim();
         if(c=='B')tuner_ts_stream_start();
         if(c=='E')tuner_ts_stream_stop();
         if(c=='r')tuner_tmcc_read();

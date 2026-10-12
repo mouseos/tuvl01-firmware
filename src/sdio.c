@@ -47,6 +47,9 @@ static struct wifi_ais_join wifi_ais_connection;
 static struct wifi_scan_cache wifi_bss_cache;
 #include "wifi_ais_mgmt.h"
 static struct wifi_power_events wifi_power;
+#define PS_LOG_SIZE 256U
+static struct ps_log_entry{uint32_t tick,tx;uint8_t in_ps,mode,quota;}ps_log[PS_LOG_SIZE];
+static unsigned ps_log_count;
 static unsigned wifi_tx_power_step;
 static struct wifi_tx_timing wifi_timing;
 static unsigned wifi_timing_enabled;
@@ -945,6 +948,7 @@ static int event_read(uint8_t *packet,unsigned capacity,unsigned *length){
     int power_observation=0;
     if(wifi_ap_active && (packet[4]==0x19 || packet[4]==0x1a || packet[4]==0x1e))
         power_observation=wifi_power_events_observe(&wifi_power,packet,stated,1,0);
+
     /* Normal power notifications can arrive per frame. Keep their counters,
      * but avoid blocking the transport on UART output unless requested.
      * Malformed or foreign notifications remain visible. */
@@ -960,6 +964,13 @@ static int event_read(uint8_t *packet,unsigned capacity,unsigned *length){
         uint32_t interval=packet[16]|((uint32_t)packet[17]<<8)|
             ((uint32_t)packet[18]<<16)|((uint32_t)packet[19]<<24);
         field(" interval_ms=",interval);uart_puts("\n");
+    }
+    if(power_observation==1 && packet[4]==0x1a){
+        /* Station power-save change: keep tick and sent-frame count, no UART output here. */
+        struct ps_log_entry *e=&ps_log[ps_log_count%PS_LOG_SIZE];
+        e->tick=xTaskGetTickCount();e->tx=wifi_data_tx;
+        e->in_ps=packet[9];e->mode=packet[10];e->quota=packet[11];
+        ps_log_count++;
     }
     if(wifi_ap_active && packet[4]==0x17 && stated>=12){
         field("WIFI management TX done sequence=",packet[8]);
@@ -1895,7 +1906,7 @@ void sdio_wifi_ap(void){
     field(" basic=",rates->basic);field(" phy=",rates->phy);uart_puts("\n");
     sdio_wifi_ap_stop();
     if(!wifi_ap_stop_ok)goto failed;
-    wifi_data_rx=wifi_data_tx=wifi_data_dropped=0;
+    wifi_data_rx=wifi_data_tx=wifi_data_dropped=0;ps_log_count=0;
     wifi_power_events_reset(&wifi_power);
     sdio_wifi_board();if(!wifi_board_sent)goto failed;
     sdio_wifi_mac();if(!wifi_mac_valid)goto failed;
@@ -2409,6 +2420,16 @@ void sdio_wifi_stats(void){
         field(" min=",b->calls?b->minimum:0);field(" max=",b->maximum);
         field(" datagrams=",b->requested_bytes);field(" overflow=",b->overflow);uart_puts("\n");
     }
+    {
+        unsigned shown=ps_log_count<PS_LOG_SIZE?ps_log_count:PS_LOG_SIZE;
+        unsigned first=ps_log_count-shown;
+        field("WIFI PS log events=",ps_log_count);field(" shown=",shown);uart_puts("\n");
+        for(unsigned i=0;i<shown;i++){
+            const struct ps_log_entry *e=&ps_log[(first+i)%PS_LOG_SIZE];
+            field("WIFI PS tick=",e->tick);field(" tx=",e->tx);field(" in_ps=",e->in_ps);
+            field(" mode=",e->mode);field(" quota=",e->quota);uart_puts("\n");
+        }
+    }
     field("WIFI power known=",wifi_power.known);
     field(" bss_events=",wifi_power.bss_events);field(" ps_events=",wifi_power.ps_events);
     field(" quota_events=",wifi_power.quota_events);field(" foreign=",wifi_power.foreign);
@@ -2867,6 +2888,13 @@ void sdio_wifi_ht(void){
     field("WIFI HT selected=",wifi_ht_enabled);uart_puts("\nWIFI HT end status=selected\n");
 }
 
+void sdio_wifi_tim(void){
+    if(wifi_ap_active || wifi_peer_state || wifi_peer_activate_pending){
+        uart_puts("WIFI TIM end status=refused-active\n");return;
+    }
+    wifi_rates_tim_aid1^=1;
+    field("WIFI TIM aid1 selected=",wifi_rates_tim_aid1);uart_puts("\nWIFI TIM end status=selected\n");
+}
 void sdio_wifi_channel(void){
     if(wifi_ap_active || wifi_peer_state || wifi_peer_activate_pending || tuner_ts_stream_active()){
         uart_puts("WIFI channel end status=refused-active\n");return;

@@ -29,6 +29,7 @@ void sdio_wifi_rate_mailbox(void);
 void sdio_wifi_radio_groups(void);
 void sdio_wifi_rate_profile(void);
 void sdio_wifi_channel(void);
+void sdio_wifi_tim(void);
 void sdio_wifi_tx_power(void);
 void sdio_wifi_tx_ampdu(void);
 /* Explicit selected AP only; bounded AIS JOIN lease probe, always released. */

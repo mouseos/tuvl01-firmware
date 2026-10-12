@@ -137,7 +137,7 @@ def main():
     command_arg.choices.append('rf-switch')
     command_arg.choices.append('tuner-reg')
     command_arg.choices.append('gpio-dump')
-    command_arg.choices.extend(['gpio-drive','gpio-release','ts-group'])
+    command_arg.choices.extend(['gpio-drive','gpio-release','ts-group','wifi-tim'])
     p.add_argument('--group',type=int,default=128,help='ts-group: packets read between FIFO clears (32..224)')
     p.add_argument('--spbr',type=int,default=255,help='ts-group: RSPI1 SPBR to select first (0..254), 255 keeps the current value')
     p.add_argument('--gpio',help='gpio-drive: PORT+PIN such as B13 (ports A..H, pin 0..31); drives the opposite of the current level')
@@ -276,6 +276,11 @@ def main():
                 print(t.wait(lambda s:s.startswith('TS group bench group='),10))
                 result=t.wait(lambda s:s.startswith('TS group bench end status='),5);print(result)
                 t.write(b'i');t.expect('UART application')
+            if a.command=='wifi-tim':
+                t.write(b'i');t.expect('UART application');t.write(bytes([31]))
+                result=t.wait(lambda s:s.startswith('WIFI TIM end status='),5);print(result)
+                t.write(b'i');t.expect('UART application')
+                if not result.endswith('=selected'):raise RuntimeError('Stop AP before changing the beacon TIM')
             if a.command=='gpio-release':
                 t.write(b'i');t.expect('UART application');t.write(bytes([29]))
                 print(t.wait(lambda s:s.startswith('GPIO release end status='),5))
