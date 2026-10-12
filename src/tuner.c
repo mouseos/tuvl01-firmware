@@ -182,6 +182,83 @@ void tuner_board_probe(void){
     board_registers();uart_puts("TUNER board preparation end status=configured\n");
     tuner_probe();
 }
+/* Read-only dump of the SH726A port/PFC register block 0xfffe3800..0xfffe38ff, 16 bit words.
+ * No register is written. Used to see pin functions and levels before any pin is driven. */
+void tuner_gpio_dump(void){
+    uart_puts("GPIO dump start\n");
+    for(unsigned line=0;line<16;line++){
+        value("GPIO ",0xfffe3800UL+line*16);
+        for(unsigned w=0;w<8;w++){uart_puts(" ");uart_hex(R16(0xfffe3800UL+line*16+w*2)&0xffffU);}
+        uart_puts("\n");
+    }
+    uart_puts("GPIO dump end status=read\n");
+}
+/* Temporarily drive one SH726A GPIO pin to look for an unknown control line (for example the
+ * RF switch). Per port: IOR1=base+0, IOR0=+2, DR1=+4, DR0=+6, PR1=+8, PR0=+0xa (pins 16..31 and
+ * 0..15). Safeguards: the output first takes the level the pin already has, so enabling it cannot
+ * cause a glitch; a pin whose IOR bit does not stick does not exist; after the change the pin is
+ * read back and any mismatch (another driver fights it) restores the original state at once; the
+ * four tuner pins PB14/PB15/PB16/PD1 are refused; only one pin can be active until released. */
+static const uint32_t gpio_port_base[8]={0xfffe3810UL,0xfffe3830UL,0xfffe3850UL,0xfffe3870UL,
+                                         0xfffe3890UL,0xfffe38b0UL,0xfffe38d0UL,0xfffe38f0UL};
+static struct{int active;unsigned port,pin,orig_dr,orig_ior;}gpio_drv;
+static void gpio_regs(unsigned port,unsigned pin,uint32_t *ior,uint32_t *dr,uint32_t *pr){
+    uint32_t b=gpio_port_base[port];unsigned hi=pin<16;
+    *ior=b+(hi?2U:0U);*dr=b+(hi?6U:4U);*pr=b+(hi?0xaU:8U);
+}
+static void gpio_restore(void){
+    uint32_t ior,dr,pr;unsigned bit=1U<<(gpio_drv.pin&15);
+    gpio_regs(gpio_drv.port,gpio_drv.pin,&ior,&dr,&pr);
+    R16(dr)=(uint16_t)((R16(dr)&~bit)|(gpio_drv.orig_dr?bit:0U));
+    R16(ior)=(uint16_t)((R16(ior)&~bit)|(gpio_drv.orig_ior?bit:0U));
+    gpio_drv.active=0;
+}
+void tuner_gpio_drive(void){
+    uint8_t arg[3];unsigned got=0;TickType_t begin=xTaskGetTickCount();
+    uart_puts("GPIO drive start\n");
+    while(got<sizeof arg){
+        int c=uart_getc();
+        if(c>=0)arg[got++]=(uint8_t)c;
+        else{
+            if((TickType_t)(xTaskGetTickCount()-begin)>=pdMS_TO_TICKS(2000)){
+                uart_puts("GPIO drive end status=transport-timeout\n");return;
+            }
+            vTaskDelay(1);
+        }
+    }
+    unsigned port=arg[0],pin=arg[1],level=arg[2];
+    if(port>7 || pin>31 || level>2){uart_puts("GPIO drive end status=rejected\n");return;}
+    if((port==1 && (pin==14 || pin==15 || pin==16)) || (port==3 && pin==1)){
+        uart_puts("GPIO drive end status=refused-tuner-pin\n");return;
+    }
+    if(gpio_drv.active){uart_puts("GPIO drive end status=refused-active\n");return;}
+    uint32_t ior,dr,pr;unsigned bit=1U<<(pin&15);
+    gpio_regs(port,pin,&ior,&dr,&pr);
+    unsigned l0=(R16(pr)&bit)?1U:0U;
+    gpio_drv.port=port;gpio_drv.pin=pin;
+    gpio_drv.orig_dr=(R16(dr)&bit)?1U:0U;gpio_drv.orig_ior=(R16(ior)&bit)?1U:0U;
+    if(gpio_drv.orig_ior){uart_puts("GPIO drive end status=refused-already-output\n");return;}
+    unsigned want=level==2?(l0^1U):level;
+    /* Same level first, then enable the output: no glitch on the pin. */
+    R16(dr)=(uint16_t)((R16(dr)&~bit)|(l0?bit:0U));
+    R16(ior)=(uint16_t)(R16(ior)|bit);
+    if(!(R16(ior)&bit)){
+        R16(dr)=(uint16_t)((R16(dr)&~bit)|(gpio_drv.orig_dr?bit:0U));
+        uart_puts("GPIO drive end status=absent-pin\n");return;
+    }
+    gpio_drv.active=1;
+    R16(dr)=(uint16_t)((R16(dr)&~bit)|(want?bit:0U));
+    for(volatile unsigned n=0;n<400;n++)__asm__ volatile("nop");
+    unsigned seen=(R16(pr)&bit)?1U:0U;
+    value("GPIO drive port=",port);value(" pin=",pin);value(" before=",l0);value(" want=",want);value(" seen=",seen);
+    uart_puts("\n");
+    if(seen!=want){gpio_restore();uart_puts("GPIO drive end status=contention-restored\n");return;}
+    uart_puts("GPIO drive end status=driven\n");
+}
+void tuner_gpio_release(void){
+    if(!gpio_drv.active){uart_puts("GPIO release end status=none-active\n");return;}
+    gpio_restore();uart_puts("GPIO release end status=restored\n");
+}
 /* Single-register diagnostic for the three MN885521 I2C banks. Four bytes
  * follow the command: op ('r' or 'w'), bank (0x60..0x62), register, value.
  * Registers 0xf0 and above (patch memory, reset, bank control) are refused. */

@@ -136,6 +136,9 @@ def main():
     command_arg.choices.append('tuner-switch')
     command_arg.choices.append('rf-switch')
     command_arg.choices.append('tuner-reg')
+    command_arg.choices.append('gpio-dump')
+    command_arg.choices.extend(['gpio-drive','gpio-release'])
+    p.add_argument('--gpio',help='gpio-drive: PORT+PIN such as B13 (ports A..H, pin 0..31); drives the opposite of the current level')
     p.add_argument('--reg',help='tuner-reg: BANK:REG for a read, BANK:REG=VALUE for a write (hex, bank 60..62, write reg<f0)')
     p.add_argument('--rf-switch',choices=['read','stock','inverse','alt','zero','pb16-low','pb16-high'],default='read',
                    help='PB14/PB15 for rf-switch: read-only, stock 1/0, inverse 0/1 (stops the tuner), or alt 1/1')
@@ -252,6 +255,25 @@ def main():
                 result=t.wait(lambda s:s.startswith('TUNE switch end status='),20)
                 print(result)
                 if result!='TUNE switch end status=switched':raise RuntimeError(result)
+                t.write(b'i');t.expect('UART application')
+            if a.command=='gpio-drive':
+                m=re.fullmatch(r'([A-Ha-h])([0-9]{1,2})',a.gpio or '')
+                if not m or int(m[2])>31:p.error('--gpio must look like B13 (ports A..H, pin 0..31)')
+                t.write(b'i');t.expect('UART application');t.write(bytes([28]));t.expect('GPIO drive start')
+                t.write(bytes([ord(m[1].upper())-65,int(m[2]),2]))
+                while True:
+                    line=t.wait(lambda s:s.startswith('GPIO drive'),10);print(line)
+                    if line.startswith('GPIO drive end status='):break
+                if line!='GPIO drive end status=driven':raise RuntimeError(line)
+                t.write(b'i');t.expect('UART application')
+            if a.command=='gpio-release':
+                t.write(b'i');t.expect('UART application');t.write(bytes([29]))
+                print(t.wait(lambda s:s.startswith('GPIO release end status='),5))
+                t.write(b'i');t.expect('UART application')
+            if a.command=='gpio-dump':
+                t.write(b'i');t.expect('UART application');t.write(bytes([27]));t.expect('GPIO dump start')
+                for _ in range(16):print(t.wait(lambda s:s.startswith('GPIO 0xfffe38') or s.startswith('GPIO fffe38') or s.startswith('GPIO ')))
+                print(t.wait(lambda s:s.startswith('GPIO dump end status='),5))
                 t.write(b'i');t.expect('UART application')
             if a.command=='tuner-reg':
                 m=re.fullmatch(r'([0-9a-fA-F]{2}):([0-9a-fA-F]{2})(?:=([0-9a-fA-F]{2}))?',a.reg or '')

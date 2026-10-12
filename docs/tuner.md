@@ -161,6 +161,18 @@ python tools/uart.py tuner-reg --reg 62:e8=02 --port COMx --log <external-log-pa
 `inverse`は`PB14=0`・`PB15=1`で、チューナーがI2Cに応答しなくなります。復旧には`tuner-init`が必要です。
 実測では、`alt`にしてもRSSI・CN・PERは変わりませんでした。RFスイッチの制御端子としては確認できていません。
 
+`gpio-dump`は`0xFFFE3800`〜`0xFFFE38FF`のport・ピン機能レジスタを読むだけです。
+`gpio-drive`は指定した1本のGPIOを、現在の読出し値の反対レベルへ一時的に出力し、`gpio-release`で元へ戻します。
+出力を有効にする前に現在と同じレベルを設定し、反転後に読み戻して、他の素子と競合していれば即座に復元します。
+チューナー用の`PB14`・`PB15`・`PB16`・`PD1`は拒否します。`PB18`を反転するとMCUが再起動しました。
+他のピンも、電源・リセット・LEDなどの基板機能を変える可能性があります。ポート全体の走査は用途のわかる範囲で行ってください。
+
+```powershell
+python tools/uart.py gpio-dump --port COMx --log <external-log-path>
+python tools/uart.py gpio-drive --gpio B13 --port COMx --log <external-log-path>
+python tools/uart.py gpio-release --port COMx --log <external-log-path>
+```
+
 ## 実機で確認した範囲
 
 次の範囲を、RAM実行のbuildで確認しています。受信地域・アンテナ・時間帯で結果は変わります。
