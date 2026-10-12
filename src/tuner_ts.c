@@ -578,6 +578,71 @@ failed:
     field(" cc_repeats=",check.cc_repeats);uart_puts("\n");
     uart_puts(result?"TS benchmark end status=failed\n":"TS benchmark end status=measured\n");
 }
+/* Diagnostic: for two seconds, clear the SPI FIFO and read a group of packets, repeating.
+ * The group size comes from the caller (one UART byte, 1..255 packets rounded up to 32).
+ * It shows how the error flags depend on the time since the last FIFO clear. */
+void tuner_ts_group_bench(void){
+    static struct ts_check check;
+    static uint8_t per_group[16];
+    unsigned group=0,groups=0,empty=0,aborted=0,tei_first=0,first_pk=0;
+    int c=-1;TickType_t begin=xTaskGetTickCount();
+    uart_puts("TS group bench start\n");
+    while(c<0){
+        c=uart_getc();
+        if(c<0){
+            if((TickType_t)(xTaskGetTickCount()-begin)>=pdMS_TO_TICKS(2000)){
+                uart_puts("TS group bench end status=no-argument\n");return;
+            }
+            vTaskDelay(1);
+        }
+    }
+    group=((unsigned)c+31U)/32U*32U;if(!group||group>224U){uart_puts("TS group bench end status=rejected\n");return;}
+    /* Second byte: SPI divider SPBR to select first (255 keeps the current one). */
+    int sel=-1;begin=xTaskGetTickCount();
+    while(sel<0){
+        sel=uart_getc();
+        if(sel<0){
+            if((TickType_t)(xTaskGetTickCount()-begin)>=pdMS_TO_TICKS(2000)){
+                uart_puts("TS group bench end status=no-divider\n");return;
+            }
+            vTaskDelay(1);
+        }
+    }
+    if(sel!=255){
+        clock_select((uint8_t)sel);
+        if(S(10)!=(uint8_t)sel){uart_puts("TS group bench end status=clock-rejected\n");return;}
+    }
+    uint8_t byte;
+    if(tuner_read_register(0x61,0x97,&byte) || (byte&0x18)!=0x10){
+        uart_puts("TS group bench end status=guard-failed\n");return;
+    }
+    ts_check_reset(&check);
+    TickType_t start=xTaskGetTickCount();
+    while((TickType_t)(xTaskGetTickCount()-start)<pdMS_TO_TICKS(2000U)){
+        if(synchronize_quiet(1)){aborted++;break;}
+        unsigned got=0,tei_before=check.tei;
+        while(got<group && (TickType_t)(xTaskGetTickCount()-start)<pdMS_TO_TICKS(2000U)){
+            /* Group sizes up to 128 read straight into the capture buffer, as tuner_ts_capture does. */
+            uint8_t *dest=(group<=128U)?capture+got*TUNER_TS_PACKET:packets;
+            int n=read_packets(dest,32,1);
+            if(n>0){
+                for(unsigned p=0;p<(unsigned)n;p++)ts_check_packet(&check,dest+p*188);
+                if(!got){first_pk+=32;tei_first+=check.tei-tei_before;}
+                got+=(unsigned)n;
+            }else if(!n){empty++;vTaskDelay(1);}
+            else{aborted++;break;}
+        }
+        if(groups<16)per_group[groups]=(uint8_t)(check.tei-tei_before);
+        groups++;
+    }
+    uart_puts("TS group bench per-group tei:");
+    for(unsigned n=0;n<16 && n<groups;n++)field(" ",per_group[n]);
+    uart_puts("\n");
+    field("TS group bench group=",group);field(" groups=",groups);field(" packets=",check.packets);
+    field(" tei=",check.tei);field(" first_batch_packets=",first_pk);field(" first_batch_tei=",tei_first);
+    field(" empty=",empty);field(" aborted=",aborted);uart_puts("\n");
+    uart_puts("TS group bench end status=measured\n");
+}
 void tuner_ts_benchmark_receive(void){
     uint8_t packet[12];unsigned received=0;
     TickType_t start=xTaskGetTickCount();

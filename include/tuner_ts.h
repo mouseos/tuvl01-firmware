@@ -19,6 +19,7 @@ void tuner_ts_capture(void);
 void tuner_ts_capture_poll(void);
 void tuner_ts_benchmark(void);
 void tuner_ts_benchmark_receive(void);
+void tuner_ts_group_bench(void);
 void tuner_ts_stream_start(void);
 void tuner_ts_stream_test_source(void);
 void tuner_ts_stream_frame_size(void);

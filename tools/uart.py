@@ -137,7 +137,9 @@ def main():
     command_arg.choices.append('rf-switch')
     command_arg.choices.append('tuner-reg')
     command_arg.choices.append('gpio-dump')
-    command_arg.choices.extend(['gpio-drive','gpio-release'])
+    command_arg.choices.extend(['gpio-drive','gpio-release','ts-group'])
+    p.add_argument('--group',type=int,default=128,help='ts-group: packets read between FIFO clears (32..224)')
+    p.add_argument('--spbr',type=int,default=255,help='ts-group: RSPI1 SPBR to select first (0..254), 255 keeps the current value')
     p.add_argument('--gpio',help='gpio-drive: PORT+PIN such as B13 (ports A..H, pin 0..31); drives the opposite of the current level')
     p.add_argument('--reg',help='tuner-reg: BANK:REG for a read, BANK:REG=VALUE for a write (hex, bank 60..62, write reg<f0)')
     p.add_argument('--rf-switch',choices=['read','stock','inverse','alt','zero','pb16-low','pb16-high'],default='read',
@@ -265,6 +267,14 @@ def main():
                     line=t.wait(lambda s:s.startswith('GPIO drive'),10);print(line)
                     if line.startswith('GPIO drive end status='):break
                 if line!='GPIO drive end status=driven':raise RuntimeError(line)
+                t.write(b'i');t.expect('UART application')
+            if a.command=='ts-group':
+                if not 1<=a.group<=224:p.error('--group must be 1..224')
+                t.write(b'i');t.expect('UART application');t.write(bytes([30]));t.expect('TS group bench start')
+                t.write(bytes([a.group,a.spbr]))
+                print(t.wait(lambda s:s.startswith('TS group bench per-group') or s.startswith('TS group bench end status='),10))
+                print(t.wait(lambda s:s.startswith('TS group bench group='),10))
+                result=t.wait(lambda s:s.startswith('TS group bench end status='),5);print(result)
                 t.write(b'i');t.expect('UART application')
             if a.command=='gpio-release':
                 t.write(b'i');t.expect('UART application');t.write(bytes([29]))
