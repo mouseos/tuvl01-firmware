@@ -583,7 +583,7 @@ failed:
  * It shows how the error flags depend on the time since the last FIFO clear. */
 void tuner_ts_group_bench(void){
     static struct ts_check check;
-    static uint8_t per_group[16];
+    static uint8_t per_group[64];
     unsigned group=0,groups=0,empty=0,aborted=0,tei_first=0,first_pk=0;
     int c=-1;TickType_t begin=xTaskGetTickCount();
     uart_puts("TS group bench start\n");
@@ -632,11 +632,11 @@ void tuner_ts_group_bench(void){
             }else if(!n){empty++;vTaskDelay(1);}
             else{aborted++;break;}
         }
-        if(groups<16)per_group[groups]=(uint8_t)(check.tei-tei_before);
+        if(groups<64)per_group[groups]=(uint8_t)(check.tei-tei_before);
         groups++;
     }
     uart_puts("TS group bench per-group tei:");
-    for(unsigned n=0;n<16 && n<groups;n++)field(" ",per_group[n]);
+    for(unsigned n=0;n<64 && n<groups;n++)field(" ",per_group[n]);
     uart_puts("\n");
     field("TS group bench group=",group);field(" groups=",groups);field(" packets=",check.packets);
     field(" tei=",check.tei);field(" first_batch_packets=",first_pk);field(" first_batch_tei=",tei_first);
