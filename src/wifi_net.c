@@ -2,6 +2,7 @@
  * RFC826 ARP, RFC792 echo, RFC768 UDP, RFC2131/2132 DHCP fixed allocation.
  * This AP supplies only its own subnet, never an Internet default route. */
 #include "wifi_net.h"
+wifi_net_service_fn wifi_net_service;
 static unsigned word(const uint8_t *p){return ((unsigned)p[0]<<8)|p[1];}
 static uint32_t longword(const uint8_t *p){return ((uint32_t)word(p)<<16)|word(p+2);}
 static void putword(uint8_t *p,unsigned n){p[0]=n>>8;p[1]=n;}
@@ -99,6 +100,18 @@ unsigned wifi_net_reply(const uint8_t *f,unsigned n,const uint8_t *mac,
         if(word(body)==68 && word(body+2)==67 &&
            (longword(ip+16)==0xffffffffUL || longword(ip+16)==WIFI_NET_IP))
             return dhcp(f,ip,body,size,mac,peer,out,cap);
+        if(wifi_net_service && word(body+2)==WIFI_NET_SERVICE_PORT && longword(ip+16)==WIFI_NET_IP &&
+           longword(ip+12)==WIFI_NET_PEER_IP && cap>=14+20+8+WIFI_NET_SERVICE_MAX){
+            uint8_t *rb=out+42;
+            unsigned rn=wifi_net_service(WIFI_NET_SERVICE_PORT,body+8,size-8,rb,WIFI_NET_SERVICE_MAX);
+            if(!rn || rn>WIFI_NET_SERVICE_MAX)return 0;
+            ethernet(out,peer,mac,0x0800);ipv4(out,WIFI_NET_PEER_IP,17,8+rn);
+            putword(out+34,WIFI_NET_SERVICE_PORT);putword(out+36,word(body));putword(out+38,8+rn);putword(out+40,0);
+            unsigned c=(~udp_sum(out+14,out+34,8+rn))&0xffff;putword(out+40,c?c:0xffff);
+            return 42+rn;
+        }
+        if(wifi_net_service && word(body+2)==WIFI_NET_UDP_PORT)
+            (void)wifi_net_service(WIFI_NET_UDP_PORT,body+8,size-8,0,0); /* liveness only */
         if(word(body+2)!=WIFI_NET_UDP_PORT || longword(ip+16)!=WIFI_NET_IP ||
            longword(ip+12)!=WIFI_NET_PEER_IP || total+14>cap)return 0;
         ethernet(out,peer,mac,0x0800);ipv4(out,WIFI_NET_PEER_IP,17,size);

@@ -14,6 +14,8 @@
 #include "tuner_tmcc.h"
 #include "cache.h"
 #include "wifi_wpa_console.h"
+#include "wifi_net.h"
+#include "wifi_ctl.h"
 extern void port_yield_entry(void),port_tick_entry(void),port_sdio_entry(void);
 static void (*vectors[BOARD_VECTOR_COUNT])(void) __attribute__((aligned(1024)));
 _Static_assert(BOARD_SDHI0_VECTOR<BOARD_VECTOR_COUNT,"SDHI0 vector outside table");
@@ -50,6 +52,8 @@ static void usb_task(void *p) {
             if(c<0)vTaskDelay(1);
             continue;
         }
+        /* Wi-Fi control clients start/stop the stream through the same commands. */
+        if(c<0)c=wifi_ctl_poll(xTaskGetTickCount(),pdMS_TO_TICKS(5000));
         if(c>=0 && c!='i' && c!='|' && c!=13 && c!=18 && c!=20 && c!=21 && c!=22 && c!=24)sdio_wifi_tx_bench_stop();
         if(c>=0 && c!=13 && c!=18 && c!=20 && c!=21 && c!=22 && c!=24 && c!='i' && c!='|' && c!='t' && c!='B' && c!='E' && c!='7' && c!='5' && c!='4' && c!='^')tuner_ts_stream_interrupt();
         if(c=='u')usb_debug();
@@ -224,7 +228,8 @@ void usb_idle(void){
 void firmware_main(void) {
     board_init();
     uart_puts("TUVL01 independent / FreeRTOS 11.1.0 / GNU SH2A BE\n");
-    uart_puts("Application revision=166\n");
+    uart_puts("Application revision=167\n");
+    wifi_net_service=wifi_ctl_service;
     flash_init(); /* Read-only NOR diagnostics; write routines are not referenced. */
     for (unsigned i=0;i<BOARD_VECTOR_COUNT;i++) vectors[i]=fault;
     vectors[33]=port_yield_entry;

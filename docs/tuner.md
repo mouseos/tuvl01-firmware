@@ -114,7 +114,21 @@ datagramは16B headerと1〜7個の188B TS packetで構成します。
 TS payload長と同期byteを検査します。UDPのため再送や到達保証はありません。
 `ts-frame-size`、`ts-burst`、`ts-aggregate`などの診断設定はAP/stream停止中に変更してください。
 
-## TVTest
+## TVTest（専用BonDriver）
+
+`client/bondriver/build.ps1`で`BonDriver_TUVL01.dll`（x64）をビルドし、TVTestのディレクトリへ置きます。
+装置を`tools/serve.ps1`で起動し、PCのWi-Fiを`TUVL01`へ接続してから、次のように起動します。
+開始・停止は[Wi-Fiプロトコル](protocol.md)でBonDriverが行うため、UARTもPC側の中継ツールも不要です。
+
+```powershell
+.\TVTest.exe /d BonDriver_TUVL01.dll
+```
+
+PCのファイアウォールでTVTest.exeの受信（UDP 4202）が許可されている必要があります。
+クライアント部分（`client/tuvl01_*`）は標準Cで、他の前端（スマートフォン等）でも再利用できます。
+ファームウェアは特定のプレーヤーに依存しません。
+
+## TVTest（UDP入力ドライバー経由）
 
 TVTestのディレクトリでUDP入力ドライバーと受信ポートを指定して起動します。
 

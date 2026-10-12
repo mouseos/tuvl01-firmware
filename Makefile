@@ -12,6 +12,7 @@ BOOT = $(COMMON) src/boot.c src/image.c src/flash.c
 APP = $(COMMON) src/app.c src/cache.c src/cache_control.S src/image.c src/flash.c src/sdio.c src/wifi_board.c src/wifi_mgmt.c src/wifi_hif.c src/wifi_net.c src/wifi_tx_feedback.c src/wifi_statistics.c src/tuner.c src/tuner_ts.c src/ts_protocol.c src/ts_check.c src/tuner_profile.c src/tuner_profile_protocol.c src/tuner_monitor.c src/tuner_monitor_protocol.c src/tuner_tmcc.c src/tuner_tmcc_protocol.c src/radio.S rtos/port/port.c rtos/port/portasm.S $(KERNEL)/tasks.c $(KERNEL)/list.c
 APP += src/wifi_link.c
 APP += src/wifi_ts_tx.c
+APP += src/wifi_ctl.c
 APP += src/wifi_status.c
 APP += src/sdio_irq.c
 APP += src/wifi_queue.c

@@ -1,5 +1,5 @@
 """Receive real TS UDP from an already connected TUVL01 AP; UART starts/stops it."""
-import argparse,hashlib,json,os,pathlib,re,socket,struct,time
+import argparse,hashlib,json,os,pathlib,re,socket,struct,sys,time
 from uart import Transport
 from ts_capture import inspect
 def decode(data):
@@ -10,8 +10,9 @@ def decode(data):
     return sequence,index,flags,data[16:]
 class StreamCapture:
     """Keep loss evidence independently of socket/UART timing."""
-    def __init__(self,on_payload=None):
+    def __init__(self,on_payload=None,keep=True,max_gaps=None):
         self.data=bytearray()
+        self.keep=keep;self.max_gaps=max_gaps
         self.on_payload=on_payload
         self.stats=dict(datagrams=0,missing_datagrams=0,index_gaps=0,reordered=0,
                         fifo_resyncs=0,invalid=0,gaps=[])
@@ -26,13 +27,14 @@ class StreamCapture:
         self.stats['missing_datagrams']+=delta
         if index!=self.next_index:
             self.stats['index_gaps']+=1
-        if delta or index!=self.next_index:
+        if (delta or index!=self.next_index) and (self.max_gaps is None or len(self.stats['gaps'])<self.max_gaps):
             self.stats['gaps'].append(dict(expected_sequence=expected,received_sequence=seq,
                 expected_index=self.next_index,received_index=index,
                 missing_datagrams=delta,packet_index_delta=(index-self.next_index)&0xffffffff))
         self.expected=(seq+1)&0xffffffff;self.next_index=(index+len(body)//188)&0xffffffff
         self.stats['fifo_resyncs']+=bool(flags&1);self.stats['datagrams']+=1
-        self.data.extend(body)
+        self.stats['payload_bytes']=self.stats.get('payload_bytes',0)+len(body)
+        if self.keep:self.data.extend(body)
         if self.on_payload is not None:self.on_payload(body)
 
 def input_summary(line):
@@ -44,7 +46,10 @@ def input_summary(line):
     return dict(zip(names,(int(value,16) for value in match.groups())))
 
 def receive(port,output,log_path,seconds,forward_port=None,quality_watch=False):
-    if not 1<=seconds<=300:raise ValueError('seconds must be 1..300')
+    # seconds==0 is live mode: run until Ctrl+C or the stop file appears, keep no TS in memory.
+    live=seconds==0
+    if not (live or 1<=seconds<=300):raise ValueError('seconds must be 0 (unlimited) or 1..300')
+    stop_file=os.environ.get('TUVL01_STOP_FILE')
     if forward_port is not None and not 1024<=forward_port<=65535:
         raise ValueError('forward port must be 1024..65535')
     output=pathlib.Path(output);output.parent.mkdir(parents=True,exist_ok=True)
@@ -54,10 +59,12 @@ def receive(port,output,log_path,seconds,forward_port=None,quality_watch=False):
             # Send only the actual TS payload, unchanged, to the local player.
             relay.sendto(body,('127.0.0.1',forward_port))
             stats['forwarded_datagrams']+=1
-    capture=StreamCapture(forward);data=capture.data;stats=capture.stats
+    capture=StreamCapture(forward,keep=not live,max_gaps=200 if live else None)
+    data=capture.data;stats=capture.stats
     stats['forwarded_datagrams']=0;accept=capture.accept
     started=None
     error=None
+    if live and stop_file and os.path.exists(stop_file):os.remove(stop_file)
     try:
         with socket.socket(socket.AF_INET,socket.SOCK_DGRAM) as udp, \
              socket.socket(socket.AF_INET,socket.SOCK_DGRAM) as relay,open(log_path,'ab') as log:
@@ -73,7 +80,8 @@ def receive(port,output,log_path,seconds,forward_port=None,quality_watch=False):
                     t.write(bytes([13]));t.expect('QUALITY watch begin status=armed')
                 t.write(b'B')
                 t.expect('TS stream begin status=active')
-                started=time.monotonic();end=started+seconds
+                started=time.monotonic();end=float('inf') if live else started+seconds
+                next_report=started+10
                 # Optional uplink keep-alive (TUVL01_KEEPALIVE_MS=10): a station that sends nothing
                 # may doze between frames, and the AP does not buffer for it.
                 keepalive=None;next_ka=0.0;ka_period=float(os.environ.get('TUVL01_KEEPALIVE_MS','0') or 0)/1000.0
@@ -83,12 +91,20 @@ def receive(port,output,log_path,seconds,forward_port=None,quality_watch=False):
                     stats['keepalive_ms']=ka_period*1000;stats['keepalive_sent']=0
                 try:
                     while time.monotonic()<end:
+                        if live and time.monotonic()>=next_report:
+                            next_report+=10
+                            print('LIVE %ds datagrams=%d missing=%d forwarded=%d'%(
+                                time.monotonic()-started,stats['datagrams'],stats['missing_datagrams'],
+                                stats['forwarded_datagrams']),file=sys.stderr,flush=True)
+                            if stop_file and os.path.exists(stop_file):break
                         if keepalive is not None and time.monotonic()>=next_ka:
                             try:keepalive.sendto(b'K',('192.168.74.1',4201));stats['keepalive_sent']+=1
                             except OSError:pass
                             next_ka=time.monotonic()+ka_period
                         try:accept(*udp.recvfrom(2048))
                         except socket.timeout:continue
+                except KeyboardInterrupt:
+                    if not live:raise
                 finally:
                     if keepalive is not None:keepalive.close()
                 stats['seconds']=time.monotonic()-started
@@ -118,12 +134,13 @@ def receive(port,output,log_path,seconds,forward_port=None,quality_watch=False):
                         try:accept(*udp.recvfrom(2048))
                         except socket.timeout:break
                     stats['unreceived_datagrams']=stats['target_datagrams']-stats['datagrams']
-                    stats['unreceived_packets']=stats['target_packets']-len(data)//188
+                    stats['unreceived_packets']=stats['target_packets']-stats.get('payload_bytes',0)//188
                 finally:t.ser.close()
     except Exception as e:
         error=e;stats["error"]=type(e).__name__+": "+str(e)
     output.write_bytes(data)
-    stats.update(inspect(data) if data else {'bytes':0,'packets':0})
+    if live:stats.update(bytes=stats.get('payload_bytes',0),packets=stats.get('payload_bytes',0)//188,live=True)
+    else:stats.update(inspect(data) if data else {'bytes':0,'packets':0})
     stats['sha256']=hashlib.sha256(data).hexdigest()
     output.with_suffix(output.suffix+'.json').write_text(json.dumps(stats,indent=2)+'\n')
     print(json.dumps({k:v for k,v in stats.items() if k!='pids'},indent=2))
