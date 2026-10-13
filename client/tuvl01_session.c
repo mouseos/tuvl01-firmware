@@ -92,6 +92,13 @@ static int exchange(tuvl01_session *s,const uint8_t *request,size_t length,uint8
 int tuvl01_command(tuvl01_session *s,uint8_t op,tuvl01_reply *reply,int timeout_ms){
     uint8_t request[TUVL01_REQUEST_SIZE];
     uint16_t id=s->next_id++;
+    /* Every START begins a new stream whose sequence numbers restart at zero (docs/protocol.md).
+     * Forget the previous stream's position first, or its first datagrams look reordered and are
+     * dropped. */
+    if(op==TUVL01_OP_START){
+        uint64_t keep_missing=s->loss.missing,keep_datagrams=s->loss.datagrams;
+        tuvl01_loss_init(&s->loss);s->loss.missing=keep_missing;s->loss.datagrams=keep_datagrams;
+    }
     tuvl01_build_request(request,op,id);
     return exchange(s,request,sizeof request,op,id,reply,timeout_ms);
 }

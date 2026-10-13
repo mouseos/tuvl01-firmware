@@ -1,4 +1,4 @@
-﻿"""Portable client protocol layer (client/tuvl01_proto.c) against the documented wire format."""
+"""Portable client protocol layer (client/tuvl01_proto.c) against the documented wire format."""
 import ctypes,pathlib,struct,subprocess,tempfile,unittest
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 class Reply(ctypes.Structure):
@@ -66,14 +66,34 @@ class ClientProto(unittest.TestCase):
             self.assertLess(self.c.tuvl01_parse_stream(bad,len(bad),ctypes.byref(Stream())),0)
     def test_loss_accounting_including_wraparound_and_reorder(self):
         l=Loss();self.c.tuvl01_loss_init(ctypes.byref(l))
-        def feed(seq,flags=0):
-            s=Stream();d=datagram(seq,0,flags);self.c.tuvl01_parse_stream(d,len(d),ctypes.byref(s))
+        def feed(seq,flags=0,index=None):
+            # packet index advances by 7 per datagram in a real stream; 0 only at the start of a stream
+            s=Stream();d=datagram(seq,(seq*7)&0xffffffff if index is None else index&0xffffffff,flags);self.c.tuvl01_parse_stream(d,len(d),ctypes.byref(s))
             return self.c.tuvl01_loss_update(ctypes.byref(l),ctypes.byref(s))
-        self.assertEqual(feed(0xfffffffe),0);self.assertEqual(feed(0xffffffff),0);self.assertEqual(feed(0),0)
+        self.assertEqual(feed(0xfffffffe),0);self.assertEqual(feed(0xffffffff),0);self.assertEqual(feed(0,index=(7*0x100000000)&0xffffffff or 7),0)
         self.assertEqual(l.missing,0)
         self.assertEqual(feed(4,1),0);self.assertEqual((l.missing,l.resyncs),(3,1))
         self.assertEqual(feed(3),1);self.assertEqual(l.reordered,1)       # late duplicate dropped
         self.assertEqual(feed(5),0);self.assertEqual((l.missing,l.datagrams),(3,5))
+    def test_a_new_stream_after_start_is_not_dropped_as_late(self):
+        # Regression: after re-tuning, the device restarts at sequence 0 / index 0. A client that kept the
+        # old position (thousands of datagrams in) dropped every datagram of the new stream as "reordered".
+        l=Loss();self.c.tuvl01_loss_init(ctypes.byref(l))
+        def feed(seq,index):
+            s=Stream();d=datagram(seq,index);self.c.tuvl01_parse_stream(d,len(d),ctypes.byref(s))
+            return self.c.tuvl01_loss_update(ctypes.byref(l),ctypes.byref(s))
+        for n in range(5000):self.assertEqual(feed(n,n*7),0)            # first stream, 5000 datagrams
+        self.assertEqual(feed(0,0),0)                                      # START again: new stream
+        for n in range(1,50):self.assertEqual(feed(n,n*7),0)
+        self.assertEqual((l.reordered,l.missing),(0,0))
+        self.assertEqual(feed(10,70),1)                                    # a genuinely late datagram is still dropped
+        self.assertEqual(l.reordered,1)
+    def test_late_datagram_with_index_zero_only_at_stream_start(self):
+        l=Loss();self.c.tuvl01_loss_init(ctypes.byref(l))
+        def feed(seq,index):
+            s=Stream();d=datagram(seq,index);self.c.tuvl01_parse_stream(d,len(d),ctypes.byref(s))
+            return self.c.tuvl01_loss_update(ctypes.byref(l),ctypes.byref(s))
+        self.assertEqual(feed(0,0),0);self.assertEqual(feed(1,7),0);self.assertEqual(feed(0,0),0)   # restart right after the first one
 if __name__=='__main__':unittest.main()
 
 

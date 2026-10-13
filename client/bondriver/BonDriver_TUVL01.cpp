@@ -72,10 +72,14 @@ public:
             rc=tuvl01_tune(&session_,(uint8_t)(FIRST_CHANNEL+channel),(uint8_t)space,12000);
             if(!rc)rc=tuvl01_command(&session_,TUVL01_OP_START,&r,1000);
         }
-        if(rc){streaming_=0;space_=channel_=0xFFFFFFFFUL;return 0;}
+        if(rc){streaming_=0;space_=channel_=0xFFFFFFFFUL;lock_=0;return 0;}
+        // TUNE returns only after the device waited for lock (up to 4 s): its answer is the lock state.
+        {tuvl01_reply s;Lock g(io_);lock_=!tuvl01_command(&session_,TUVL01_OP_STATUS,&s,300)?s.lock:0;}
         PurgeTsStream();space_=space;channel_=channel;streaming_=1;return 1;
     }
-    const float GetSignalLevel(void) override {return level_;}  // receive rate in Mbps
+    // The device reports only frame lock (0/1), not a calibrated C/N, so no dB value is invented:
+    // 0 without lock; with lock the receive rate in Mbps (a plain positive number, never a dB claim).
+    const float GetSignalLevel(void) override {return lock_==1?(level_>1.0f?level_:1.0f):0.0f;}
     const DWORD WaitTsStream(const DWORD timeout) override {
         if(!open_)return 0x102;
         if(Available())return 0;
@@ -139,8 +143,14 @@ private:
         unsigned char buffer[1344];
         uint64_t window=tuvl01_now_ms(),last_check=window;size_t bytes=0;
         while(!stop_){
+            // Drain everything that has arrived before doing housekeeping: the device sends ~1900
+            // datagrams per second, one read per loop iteration cannot keep up.
             int n=tuvl01_receive(&session_,buffer,sizeof buffer,5);
-            if(n>0){Push(buffer,(size_t)n);bytes+=(size_t)n;}
+            for(int burst=0;n>=0 && burst<256;burst++){
+                if(n>0){Push(buffer,(size_t)n);bytes+=(size_t)n;}
+                n=tuvl01_receive(&session_,buffer,sizeof buffer,0);
+                if(n==0)break;
+            }
             {Lock g(io_);tuvl01_service(&session_,streaming_?10:0,1000);}
             uint64_t now=tuvl01_now_ms();
             if(streaming_ && now-last_check>=1000){
@@ -149,15 +159,25 @@ private:
                 last_check=now;
                 Lock g(io_);
                 tuvl01_reply r;
-                if(streaming_ && !tuvl01_command(&session_,TUVL01_OP_STATUS,&r,300) &&
-                   r.state==TUVL01_STATE_IDLE && r.tune!=TUVL01_TUNE_BUSY && r.lock==1)
-                    tuvl01_command(&session_,TUVL01_OP_START,&r,300);
+                if(streaming_ && !tuvl01_command(&session_,TUVL01_OP_STATUS,&r,300)){
+                    lock_=r.lock;
+                    if(r.state==TUVL01_STATE_IDLE && r.tune!=TUVL01_TUNE_BUSY && r.lock==1)
+                        tuvl01_command(&session_,TUVL01_OP_START,&r,300);
+                }
             }
             if(now-window>=500){level_=(float)((double)bytes*8.0/1e6/((double)(now-window)/1000.0));bytes=0;window=now;}
         }
     }
+public:
+    // Diagnostics (read by tools only): receive-side counters of the current session.
+    void Counters(unsigned long long *out){
+        out[0]=session_.loss.datagrams;out[1]=session_.loss.missing;out[2]=session_.loss.reordered;
+        out[3]=session_.loss.invalid;out[4]=wr_;out[5]=rd_;
+    }
+private:
     volatile int open_,stop_,streaming_;
     volatile DWORD space_,channel_;
+    volatile unsigned lock_;
     wchar_t names_[CHANNELS][5];
     volatile float level_;
     volatile size_t rd_,wr_;
@@ -170,6 +190,10 @@ private:
 }
 
 extern "C" __declspec(dllexport) IBonDriver *CreateBonDriver(){return Driver::Create();}
+// Not part of the BonDriver interface: lets tools read the counters of an instance they created.
+extern "C" __declspec(dllexport) void TUVL01_Counters(IBonDriver *driver,unsigned long long *out){
+    static_cast<Driver *>(static_cast<IBonDriver2 *>(driver))->Counters(out);
+}
 extern "C" BOOL __stdcall DllMain(HANDLE,DWORD,void *){return 1;}
 
 

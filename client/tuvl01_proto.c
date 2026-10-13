@@ -1,4 +1,4 @@
-﻿/* SPDX-License-Identifier: MIT */
+/* SPDX-License-Identifier: MIT */
 #include "tuvl01_proto.h"
 static uint32_t be32(const uint8_t *p){return ((uint32_t)p[0]<<24)|((uint32_t)p[1]<<16)|((uint32_t)p[2]<<8)|p[3];}
 static uint16_t be16(const uint8_t *p){return (uint16_t)((p[0]<<8)|p[1]);}
@@ -37,6 +37,9 @@ void tuvl01_loss_init(tuvl01_loss *l){
     l->expected=0;l->started=0;l->datagrams=l->missing=l->resyncs=l->reordered=l->invalid=0;
 }
 int tuvl01_loss_update(tuvl01_loss *l,const tuvl01_stream *s){
+    /* A START begins a new stream whose first datagram is sequence 0 / packet index 0 (docs/protocol.md).
+     * That datagram is never "late" for the previous stream, whatever position it had reached. */
+    if(l->started && s->sequence==0 && s->index==0 && l->expected!=0)l->started=0;
     if(l->started){
         uint32_t delta=s->sequence-l->expected;
         if(delta>=0x80000000U){++l->reordered;return 1;}
