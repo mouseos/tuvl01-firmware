@@ -5,6 +5,9 @@ RADIO_FILE ?= firmware/mt5931.bin
 RADIO_SHA256 ?= 06d43badbb669700c7cf94924c43a40779b428f3ceec8756813b0aaec2b4a68d
 KERNEL = third_party/FreeRTOS-Kernel
 CFLAGS = -m2a-nofpu -mb -Os -g -ffreestanding -fno-builtin -fno-common -ffunction-sections -fdata-sections -Wall -Wextra -Werror -Iinclude -Ibuild -Irtos/port -I$(KERNEL)/include
+ifeq ($(AUTOSERVE),1)
+CFLAGS += -DTUVL01_AUTOSERVE=1
+endif
 LDFLAGS = -nostdlib -Wl,--gc-sections,--build-id=none
 INTEGER_RUNTIME = $(TOOLCHAIN)/lib/tuvl01/libgcc-sh2a-be.a
 COMMON = src/startup.S src/board.c src/runtime.c src/usb.c
@@ -13,7 +16,7 @@ APP = $(COMMON) src/app.c src/cache.c src/cache_control.S src/image.c src/flash.
 APP += src/wifi_link.c
 APP += src/wifi_ts_tx.c
 APP += src/wifi_ctl.c
-APP += src/tuner_uhf.c src/tuner_uhf_table.c
+APP += src/tuner_uhf.c src/tuner_uhf_table.c src/tuner_serve.c
 APP += src/wifi_status.c
 APP += src/sdio_irq.c
 APP += src/wifi_queue.c

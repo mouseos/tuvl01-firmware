@@ -2639,6 +2639,7 @@ void sdio_wifi_clock(void){
 failed:
     uart_puts("WIFI normal clock end status=failed\n");
 }
+int sdio_wifi_ap_running(void){return wifi_ap_active!=0;}
 int sdio_wifi_traffic_active(void){
     return wifi_ap_active || wifi_peer_state || wifi_peer_activate_pending ||
            wifi_management_pending || wifi_data_count || wifi_bench_active || wifi_sink_active ||

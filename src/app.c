@@ -17,6 +17,7 @@
 #include "wifi_net.h"
 #include "wifi_ctl.h"
 #include "tuner_uhf.h"
+#include "tuner_serve.h"
 extern void port_yield_entry(void),port_tick_entry(void),port_sdio_entry(void);
 static void (*vectors[BOARD_VECTOR_COUNT])(void) __attribute__((aligned(1024)));
 _Static_assert(BOARD_SDHI0_VECTOR<BOARD_VECTOR_COUNT,"SDHI0 vector outside table");
@@ -44,6 +45,11 @@ static void usb_task(void *p) {
     (void)p;
     usb_init();
     TickType_t slice_start=xTaskGetTickCount(),lock_at=slice_start;
+#ifdef TUVL01_AUTOSERVE
+    /* Standalone image (make AUTOSERVE=1): come up serving without any PC. */
+    tuner_serve();
+    slice_start=lock_at=xTaskGetTickCount();
+#endif
     for (;;) {
         sdio_wifi_service_mark(0);
         usb_poll();int c=uart_getc();
@@ -183,6 +189,7 @@ static void usb_task(void *p) {
         if(c==29)tuner_gpio_release();
         if(c==30)tuner_ts_group_bench();
         if(c==31)sdio_wifi_tim();
+        if(c==16)tuner_serve();
         if(c=='B')tuner_ts_stream_start();
         if(c=='E')tuner_ts_stream_stop();
         if(c=='r')tuner_tmcc_read();

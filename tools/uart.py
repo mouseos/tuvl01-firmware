@@ -94,7 +94,7 @@ class Transport:
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
-    command_arg=p.add_argument('command',choices=['upload','resume','run','cycle','save','recover','diag','pins','sdio','wifi','mac','capability','scan','board','ap','apstop','load','audit','wifi-stats','wifi-verbose','wifi-clock','wifi-width','wifi-read-poll','wifi-write-poll','wifi-ts-feedback','wifi-nic-stats','wifi-link','wifi-rate','wifi-poll-reuse','wifi-status-poll','wifi-poll-budget','wifi-irq','wifi-read-check','tuner','tuner-board','tuner-analog','tuner-init','ts-burst','ts-aggregate','ts-probe','ts-output','ts-dma','ts-dma-long','ts-benchmark','ts-clock','ts-clock-max','icache','tuner-monitor','tuner-fec','tuner-quality','tmcc','uhf-base','vlow-base'])
+    command_arg=p.add_argument('command',choices=['upload','resume','run','cycle','save','recover','diag','pins','sdio','wifi','mac','capability','scan','board','ap','apstop','load','audit','wifi-stats','wifi-verbose','wifi-clock','wifi-width','wifi-read-poll','wifi-write-poll','wifi-ts-feedback','wifi-nic-stats','wifi-link','wifi-rate','wifi-poll-reuse','wifi-status-poll','wifi-poll-budget','wifi-irq','wifi-read-check','tuner','tuner-board','tuner-analog','tuner-init','ts-burst','ts-aggregate','ts-probe','ts-output','ts-dma','ts-dma-long','ts-benchmark','ts-clock','ts-clock-max','icache','tuner-monitor','tuner-fec','tuner-quality','tmcc','uhf-base','vlow-base','serve'])
     p.add_argument('--port',required=True);p.add_argument('--image',type=pathlib.Path)
     p.add_argument('--log',type=pathlib.Path,required=True)
     p.add_argument('--benchmark-seconds',type=int,
@@ -243,6 +243,12 @@ def main():
                 result=t.wait(lambda s:s.startswith(prefix+' end status='),20)
                 print(result)
                 if not result.endswith('=transferred'):raise RuntimeError(prefix+' failed; see UART log')
+            if a.command=='serve':
+                # One command replaces the whole bring-up sequence (firmware src/tuner_serve.c).
+                t.write(b'i');t.expect('UART application');t.write(bytes([16]))
+                result=t.wait(lambda s:s.startswith('SERVE end status='),400)
+                print(result)
+                if not result.endswith('=ready'):raise RuntimeError('Bring-up failed; see UART log')
             if a.command=='load':t.load()
             if a.command=='audit':t.audit()
             if a.command in ('wifi-stats','wifi-verbose'):
