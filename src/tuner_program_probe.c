@@ -103,10 +103,11 @@ void tuner_program_burst_probe(void){
 
 /* The same-family manufacturer's release routine sets F3 bit1 then clears
  * bit0. With the observed upper bits this is E2, unlike TUVL01's E0. Compare
- * both released states and the known transfer state E3, without writing
+ * E0, transfer E3, then the manufacturer's E3->E2 release, without writing
  * address/data/reset registers. Read semantics remain unclassified. */
 void tuner_program_release_probe(void){
-    static const uint8_t modes[3]={0xe0,0xe2,0xe3};
+    static const uint8_t modes[3]={0xe0,0xe3,0xe2};
+    uint8_t observed[3]={0,0,0};
     uint8_t original,high,low,after,ordinary[6],single[6];
     uint8_t data[3][2][2][8];
     unsigned count[3][2][2]={{{0}}},failed=0,changed=0,actual=0;
@@ -134,14 +135,22 @@ void tuner_program_release_probe(void){
     for(unsigned mode=0;mode<3 && !failed;mode++){
         if(mode){
             changed=1;
+            /* Manufacturer release first sets bit1 while bit0 is still 1,
+             * then clears bit0. Upper bits are known E0 by the guard. */
+            if(mode==2 && tuner_write_register(bank,0xf3,0xe3)){failed=1;break;}
             if(tuner_write_register(bank,0xf3,modes[mode])){failed=1;break;}
         }
         if(tuner_read_register(bank,0xf3,&after)){
             uart_puts("PROGRAM release control-read-failed\n");failed=1;break;
         }
+        observed[mode]=after;
         uart_puts("PROGRAM release control requested=");uart_hex(modes[mode]);
         uart_puts(" observed=");uart_hex(after);uart_puts("\n");
-        if(after!=modes[mode]){failed=1;break;}
+        /* The board reads E3 as E1 and E2 as E0: bit1 reads low in both
+         * observed transitions. Accept only these measured alternatives;
+         * its write-only/self-clearing semantics are still unclassified. */
+        if(after!=modes[mode] && !(mode==1 && after==0xe1) &&
+           !(mode==2 && after==original)){failed=1;break;}
         for(unsigned port=0;port<2 && !failed;port++){
             for(unsigned n=0;n<8;n++){
                 if(tuner_read_register(bank,0xf6+port,&data[mode][0][port][n])){failed=1;break;}
@@ -161,6 +170,7 @@ void tuner_program_release_probe(void){
     if(tuner_read_register(bank,0xf5,&after) || after!=low)restored=0;
     for(unsigned mode=0;mode<3;mode++)for(unsigned kind=0;kind<2;kind++)for(unsigned port=0;port<2;port++){
         uart_puts("PROGRAM release mode=");uart_hex(modes[mode]);
+        uart_puts(" observed=");uart_hex(observed[mode]);
         uart_puts(kind?" type=burst":" type=single");uart_puts(" port=");uart_hex(0xf6+port);
         uart_puts(" count=");uart_hex(count[mode][kind][port]);uart_puts(" bytes=");
         for(unsigned n=0;n<count[mode][kind][port] && n<8;n++){uart_hex(data[mode][kind][port][n]);uart_puts(" ");}
