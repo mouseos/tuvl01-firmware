@@ -51,9 +51,38 @@ PC側とloader側でtarget、size、CRCを検査します。CRCは破損検知�
 
 ## RAM実行とSPI保存
 
-起動時はrecoveryで待ちます。SPI applicationを自動実行しません。
+## 単独起動（PC不要）
+
+loaderは電源投入後5秒間（CMTタイマーで計測）UARTの受信を待ちます。1バイトでも受信すれば従来どおりrecoveryで待ちます。
+何も来なければ、SPIに保存されたapplicationをCRC検査しながらRAMへ読み出して実行します。
+SPIが空・不正なら実行せずrecoveryで待ちます。壊れたapplicationは、電源投入直後にUARTへ1バイト送れば入れ替えられます。
+
+PCなしで受信機として起動させるには、`make AUTOSERVE=1`で作ったimageをSPIへ保存します（`build/app.img`は通常版）。
+このimageは起動後に`tuner_serve()`でチューナー初期化・選局・TS経路・Wi-Fi・APまで自分で進めます。
+電源投入からAPが立ち上がるまでは約25秒（loader待機5秒、SPI読出し、約15秒の初期化）です。
+状態はLEDで確認できます（赤=起動中、緑=待機中、緑+赤点滅=送信中、緑赤速い点滅=失敗）。
+
+```powershell
+python tools/uart.py recover --port COMx --log logs/update.bin
+python tools/uart.py upload --port COMx --image app-autoserve.img --log logs/update.bin
+python tools/uart.py save --port COMx --log logs/update.bin
+```
+
+### loader自体の更新
+
+loaderはSPIの先頭8KiB（セクタ0・1）です。applicationが実行中に限り、専用コマンドで書き換えられます。
+CRCとバナー文字列、ブロック保護がないことを検査し、セクタ1、セクタ0の順に書いて読み戻し比較します。
+通常の保存処理は先頭64KiBを書けないままです。書込み中の電源断に備え、元のSPI全体のダンプを必ず保管してください。
+
+```powershell
+python tools/uart.py loader-update --port COMx --image build/boot.bin --log logs/loader.bin
+```
+
+## RAM実行とSPI保存
+
 RAM転送、SPI読出し、実行は明示操作です。[UARTコマンド](uart.md)を使用してください。
 `cycle`はRAM転送・実行だけを行います。SPI保存はrecoveryで`upload`の後に`save`を実行します。
+`serve`は、RAMで動くapplicationに起動手順をまとめて実行させます（`tools/serve.ps1`は`cycle`と`serve`を続けて実行します）。
 
 更新はloader内で実行し、SPI先頭64KiB `[0, 0x10000)`を保護します。
 4KiB消去、page program、読戻し検査を行い、application headerを最後に書きます。
