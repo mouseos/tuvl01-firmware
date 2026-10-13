@@ -94,6 +94,59 @@ int tuner_read_register(unsigned address,unsigned reg,uint8_t *byte){
 failed:
     return transaction_failure(address,reg);
 }
+/* Receive polling cannot yield: manual 19.7.2/3 warns that delayed ICDRR
+ * reads or RCVD/ACKBT changes can lose data and prevent STOP. A finite
+ * iteration budget also expires with the RTOS tick interrupt masked. */
+static int burst_wait(unsigned mask,const char *phase){
+    for(unsigned n=0;n<20000;n++){
+        unsigned status=I(4);
+        if(status&4){failure_phase="arbitration-lost";return -1;}
+        if((status&mask)==mask)return 0;
+    }
+    failure_phase=phase;return -1;
+}
+/* Manual 19.4.3: ACK intermediate bytes, arm RCVD/NACK before reading the
+ * penultimate byte, issue STOP before reading the final byte. One register
+ * pointer transaction followed by one read transaction; chip-specific
+ * auto-increment/stream semantics are not supplied by this transport. */
+int tuner_read_burst(unsigned address,unsigned reg,uint8_t *bytes,unsigned count,unsigned *received){
+    if(received)*received=0;
+    if(address<0x60 || address>0x62 || reg>255 || !bytes || !received || !count || count>8)return -1;
+    if(count==1){
+        int result=tuner_read_register(address,reg,bytes);
+        if(!result)*received=1;
+        return result;
+    }
+    if(!controller_ready)controller_init();
+    failure_phase=0;
+    if(start() || send_byte(address<<1,"write-address-NACK") ||
+       send_byte(reg,"register-pointer-NACK") || stop())goto failed;
+    if(start() || send_byte((address<<1)|1,"read-address-NACK"))goto failed;
+    /* At most eight bytes; no UART, scheduler delay, or tick-based timeout
+     * while interrupts are masked. Exit the critical section on every path. */
+    taskENTER_CRITICAL();
+    I(4)&=(uint8_t)~0x40;I(0)&=(uint8_t)~0x10;
+    I(4)&=(uint8_t)~0x80;I(0)&=(uint8_t)~0x40;I(3)&=(uint8_t)~1;
+    (void)I(7);
+    for(unsigned n=0;n<count-2;n++){
+        if(burst_wait(0x20,"burst-rx-full"))goto receive_failed;
+        bytes[n]=I(7);*received=n+1;
+    }
+    if(burst_wait(0x20,"burst-penultimate"))goto receive_failed;
+    I(0)|=0x40;I(3)|=1;
+    bytes[count-2]=I(7);*received=count-1;
+    if(burst_wait(0x20,"burst-final"))goto receive_failed;
+    I(4)&=(uint8_t)~8;I(1)&=0x3f;
+    if(burst_wait(8,"burst-stop"))goto receive_failed;
+    bytes[count-1]=I(7);*received=count;
+    I(0)&=(uint8_t)~0x70;started=0;
+    taskEXIT_CRITICAL();
+    return 0;
+receive_failed:
+    taskEXIT_CRITICAL();
+failed:
+    return transaction_failure(address,reg);
+}
 static int write_chunk(unsigned address,unsigned reg,const uint8_t *bytes,unsigned count){
     if(address<0x60 || address>0x62 || reg>255 || !bytes || !count || count>128)return -1;
     if(!controller_ready)controller_init();

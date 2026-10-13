@@ -37,7 +37,11 @@ class Transport:
         mode=self.wait(lambda s:s.startswith('UART recovery ') or s=='UART application')
         if mode=='UART application':
             self.write(b'q');self.expect('TUVL01 independent recovery boot');self.write(b'i')
-            mode=self.wait(lambda s:s.startswith('UART recovery '))
+            # Standalone loader consumes the first byte to cancel autoboot.
+            # Request its status again only after that cancellation is observed.
+            mode=self.wait(lambda s:s.startswith('UART recovery ') or s=='AUTOBOOT cancelled',15)
+            if mode=='AUTOBOOT cancelled':
+                self.write(b'i');mode=self.wait(lambda s:s.startswith('UART recovery '),15)
         if not mode.endswith('busy=00000000'):raise RuntimeError('Recovery is busy; wait before retrying')
         return mode
     def resume(self,data):
@@ -95,7 +99,7 @@ class Transport:
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     command_arg=p.add_argument('command',choices=['upload','resume','run','cycle','save','recover','diag','pins','sdio','wifi','mac','capability','scan','board','ap','apstop','load','audit','wifi-stats','wifi-verbose','wifi-clock','wifi-width','wifi-read-poll','wifi-write-poll','wifi-ts-feedback','wifi-nic-stats','wifi-link','wifi-rate','wifi-poll-reuse','wifi-status-poll','wifi-poll-budget','wifi-irq','wifi-read-check','tuner','tuner-board','tuner-analog','tuner-init','ts-burst','ts-aggregate','ts-probe','ts-output','ts-dma','ts-dma-long','ts-benchmark','ts-clock','ts-clock-max','icache','tuner-monitor','tuner-fec','tuner-quality','tmcc','uhf-base','vlow-base','serve','loader-update'])
-    command_arg.choices += ['tuner-program-port']
+    command_arg.choices += ['tuner-program-port','tuner-program-burst']
     p.add_argument('--port',required=True);p.add_argument('--image',type=pathlib.Path)
     p.add_argument('--log',type=pathlib.Path,required=True)
     p.add_argument('--benchmark-seconds',type=int,
@@ -201,10 +205,12 @@ def main():
             if a.command in ('run','cycle'):t.run()
             if a.command=='save':t.save()
             if a.command=='recover':t.recovery()
-            if a.command=='tuner-program-port':
+            if a.command in ('tuner-program-port','tuner-program-burst'):
                 t.write(b'i');t.expect('UART application')
-                t.write(b'\x01')
-                result=t.wait(lambda s:s.startswith('PROGRAM probe end status='),15)
+                burst=a.command=='tuner-program-burst'
+                t.write(b'\x09' if burst else b'\x01')
+                prefix='PROGRAM burst end status=' if burst else 'PROGRAM probe end status='
+                result=t.wait(lambda s:s.startswith(prefix),20)
                 print(result)
                 if not result.endswith('=read-restored-unclassified'):raise RuntimeError(result)
                 t.write(b'i');t.expect('UART application')
