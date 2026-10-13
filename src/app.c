@@ -190,6 +190,7 @@ static void usb_task(void *p) {
         if(c==1)tuner_program_port_probe();
         if(c=='*')tuner_program_burst_probe();
         if(c=='`')tuner_pin_capture_probe();
+        if(c=='-')tuner_pin_test_probe();
         if(c==27)tuner_gpio_dump();
         if(c==28)tuner_gpio_drive();
         if(c==29)tuner_gpio_release();

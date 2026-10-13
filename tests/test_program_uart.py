@@ -58,10 +58,21 @@ class RecoveryTests(unittest.TestCase):
             self.assertEqual(t.sent,[b'i',b'`',b'i'])
             self.assertEqual(t.responses,[])
 
+    def test_pin_test_has_dedicated_opcode_and_failure_is_reported(self):
+        for outcome in ('captured-restored-unclassified','restore-failed-inputs-retained'):
+            with tempfile.TemporaryDirectory() as directory:
+                t=ScriptedTransport(['UART application','PINTST capture end status='+outcome]+(['UART application'] if outcome.startswith('captured') else []))
+                argv=['uart.py','tuner-pin-test','--port','COM_FAKE','--log',str(pathlib.Path(directory)/'uart.bin')]
+                with mock.patch.object(uart,'Transport',return_value=t),mock.patch.object(sys,'argv',argv),contextlib.redirect_stdout(io.StringIO()):
+                    if outcome.startswith('captured'):uart.main()
+                    else:
+                        with self.assertRaises(RuntimeError):uart.main()
+                self.assertEqual(t.sent,[b'i',b'-']+([b'i'] if outcome.startswith('captured') else []))
+
     def test_probe_opcodes_do_not_dispatch_other_commands(self):
         import re
         source=(pathlib.Path(__file__).resolve().parents[1]/'src/app.c').read_text()
-        for opcode,call in [("'*'",'tuner_program_burst_probe'),("'`'",'tuner_pin_capture_probe')]:
+        for opcode,call in [("'*'",'tuner_program_burst_probe'),("'`'",'tuner_pin_capture_probe'),("'-'",'tuner_pin_test_probe')]:
             dispatch=re.findall(r'if\(c=='+re.escape(opcode)+r'\)(\w+)\(',source)
             self.assertEqual(dispatch,[call])
 

@@ -8,6 +8,13 @@ def capture():
             lines.append(f'PIN sample mode={mode:08x} index={n:08x} counts={(0xffffff00+n*4)&0xffffffff:08x} value={n%2:08x}')
     lines.append('PIN capture end status=captured-restored-unclassified')
     return '\n'.join(lines)
+def pin_test_capture():
+    text=capture().replace('PIN ','PINTST ').replace('mode=00000002','case=00000001').replace('mode=00000000','case=00000002')
+    restore=[]
+    for b,r,m in [(0x62,0xe8,15),(0x62,0xf8,15),(0x60,0xac,4),(0x61,0xd7,0x70),
+                  (0x61,0xda,0x38),(0x61,0xdb,255),(0x61,0xdc,255),(0x61,0xdd,15),(0x61,0xe7,0x71)]:
+        restore.append(f'PINTST restore bank={b:08x} reg={r:08x} mask={m:08x} before=00000000 after=00000000')
+    return text.replace('PINTST capture end','\n'.join(restore)+'\nPINTST capture end')
 class CaptureTests(unittest.TestCase):
     def test_wrap_and_pin_transition_counts(self):
         result=probe.summarize(capture())
@@ -23,4 +30,9 @@ class CaptureTests(unittest.TestCase):
             with self.assertRaises(ValueError):probe.summarize(text)
     def test_only_last_capture_is_parsed(self):
         self.assertEqual(len(probe.summarize(capture()+'\n'+capture())['modes']),2)
+    def test_pin_test_capture_requires_all_restoration_fields(self):
+        text=pin_test_capture();result=probe.summarize(text,True)
+        self.assertEqual([r['test_case'] for r in result['modes']],[1,2])
+        for bad in [text.replace('reg=000000e8','reg=000000e9'),text.replace('after=00000000','after=000000ff')]:
+            with self.assertRaises(ValueError):probe.summarize(bad,True)
 if __name__=='__main__':unittest.main()
