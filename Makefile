@@ -13,6 +13,7 @@ APP = $(COMMON) src/app.c src/cache.c src/cache_control.S src/image.c src/flash.
 APP += src/wifi_link.c
 APP += src/wifi_ts_tx.c
 APP += src/wifi_ctl.c
+APP += src/tuner_uhf.c src/tuner_uhf_table.c
 APP += src/wifi_status.c
 APP += src/sdio_irq.c
 APP += src/wifi_queue.c

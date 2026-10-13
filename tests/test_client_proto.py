@@ -1,10 +1,11 @@
-"""Portable client protocol layer (client/tuvl01_proto.c) against the documented wire format."""
+﻿"""Portable client protocol layer (client/tuvl01_proto.c) against the documented wire format."""
 import ctypes,pathlib,struct,subprocess,tempfile,unittest
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 class Reply(ctypes.Structure):
     _fields_=[('op',ctypes.c_uint8),('status',ctypes.c_uint8),('state',ctypes.c_uint8),('id',ctypes.c_uint16),
               ('version',ctypes.c_uint8),('revision',ctypes.c_uint16),('stream_port',ctypes.c_uint16),
-              ('caps',ctypes.c_uint32),('channel',ctypes.c_uint16)]
+              ('caps',ctypes.c_uint32),('first_channel',ctypes.c_uint8),('last_channel',ctypes.c_uint8),
+              ('channel',ctypes.c_uint16),('partial',ctypes.c_uint8),('tune',ctypes.c_uint8),('lock',ctypes.c_uint8)]
 class Stream(ctypes.Structure):
     _fields_=[('sequence',ctypes.c_uint32),('index',ctypes.c_uint32),('flags',ctypes.c_uint32),
               ('ts',ctypes.c_void_p),('packets',ctypes.c_size_t)]
@@ -36,6 +37,18 @@ class ClientProto(unittest.TestCase):
         rc,r=self.reply(bytes.fromhex('544354318100000101'+'00a7'+'00000001'+'106a'+'00'))
         self.assertEqual(rc,0);self.assertEqual((r.op,r.status,r.id,r.version,r.revision,r.caps,r.stream_port,r.state),
             (1,0,1,1,167,1,4202,0))
+    def test_tune_request_layout(self):
+        out=ctypes.create_string_buffer(10)
+        self.assertEqual(self.c.tuvl01_build_tune_request(out,25,1,0x0102),10)
+        self.assertEqual(out.raw,b'TCT1\x06\x00\x01\x02\x19\x01')
+    def test_hello_from_tune_capable_firmware(self):
+        rc,r=self.reply(bytes.fromhex('544354318100000101'+'00a8'+'00000003'+'106a'+'00'+'0d34'))
+        self.assertEqual((rc,r.revision,r.caps,r.first_channel,r.last_channel),(0,168,3,13,52))
+    def test_extended_status(self):
+        rc,r=self.reply(bytes.fromhex('544354318400000400'+'0019'+'01'+'02'+'01'))
+        self.assertEqual((rc,r.state,r.channel,r.partial,r.tune,r.lock),(0,0,25,1,2,1))
+        rc,r=self.reply(bytes.fromhex('544354318400000400'+'0000'+'00'+'01'+'ff'))
+        self.assertEqual((r.tune,r.lock),(1,255))
     def test_status_and_simple_replies(self):
         rc,r=self.reply(bytes.fromhex('544354318400000401000000'));self.assertEqual((rc,r.op,r.state,r.channel),(0,4,1,0))
         rc,r=self.reply(bytes.fromhex('544354318200000202'));self.assertEqual((rc,r.op,r.state),(0,2,2))
@@ -62,3 +75,5 @@ class ClientProto(unittest.TestCase):
         self.assertEqual(feed(3),1);self.assertEqual(l.reordered,1)       # late duplicate dropped
         self.assertEqual(feed(5),0);self.assertEqual((l.missing,l.datagrams),(3,5))
 if __name__=='__main__':unittest.main()
+
+

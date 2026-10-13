@@ -21,6 +21,13 @@ static void sock_close(uintptr_t s){close((int)s);}
 uint64_t tuvl01_now_ms(void){struct timespec t;clock_gettime(CLOCK_MONOTONIC,&t);return (uint64_t)t.tv_sec*1000+t.tv_nsec/1000000;}
 #endif
 
+static void pause_ms(unsigned ms){
+#ifdef _WIN32
+    Sleep(ms);
+#else
+    usleep(ms*1000);
+#endif
+}
 static int wait_readable(uintptr_t sock,int timeout_ms){
     fd_set set;struct timeval tv;
     FD_ZERO(&set);FD_SET((SOCKET)sock,&set);
@@ -63,11 +70,10 @@ void tuvl01_close(tuvl01_session *s){
     WSACleanup();
 #endif
 }
-int tuvl01_command(tuvl01_session *s,uint8_t op,tuvl01_reply *reply,int timeout_ms){
-    uint8_t request[TUVL01_REQUEST_SIZE],buffer[64];
-    uint16_t id=s->next_id++;
-    tuvl01_build_request(request,op,id);
-    if(send_to(s->control,TUVL01_CONTROL_PORT,request,sizeof request))return -1;
+static int exchange(tuvl01_session *s,const uint8_t *request,size_t length,uint8_t op,uint16_t id,
+                    tuvl01_reply *reply,int timeout_ms){
+    uint8_t buffer[64];
+    if(send_to(s->control,TUVL01_CONTROL_PORT,request,length))return -1;
     uint64_t end=tuvl01_now_ms()+(uint64_t)timeout_ms;
     for(;;){
         uint64_t now=tuvl01_now_ms();
@@ -81,6 +87,30 @@ int tuvl01_command(tuvl01_session *s,uint8_t op,tuvl01_reply *reply,int timeout_
         if(tuvl01_parse_reply(buffer,(size_t)n,&r) || r.id!=id || r.op!=op)continue;
         if(reply)*reply=r;
         return r.status==TUVL01_STATUS_OK?0:-3;
+    }
+}
+int tuvl01_command(tuvl01_session *s,uint8_t op,tuvl01_reply *reply,int timeout_ms){
+    uint8_t request[TUVL01_REQUEST_SIZE];
+    uint16_t id=s->next_id++;
+    tuvl01_build_request(request,op,id);
+    return exchange(s,request,sizeof request,op,id,reply,timeout_ms);
+}
+int tuvl01_tune(tuvl01_session *s,uint8_t channel,uint8_t partial,int timeout_ms){
+    uint8_t request[TUVL01_REQUEST_SIZE+2];
+    uint16_t id=s->next_id++;
+    tuvl01_reply r;
+    tuvl01_build_tune_request(request,channel,partial,id);
+    int rc=exchange(s,request,sizeof request,TUVL01_OP_TUNE,id,&r,1500);
+    if(rc)return rc;
+    uint64_t end=tuvl01_now_ms()+(uint64_t)timeout_ms;
+    for(;;){
+        /* The device may be busy retuning and answer late: keep polling until the deadline. */
+        if(!tuvl01_command(s,TUVL01_OP_STATUS,&r,1000)){
+            if(r.tune==TUVL01_TUNE_FAILED)return -4;
+            if(r.tune==TUVL01_TUNE_DONE && r.channel==channel && r.partial==partial)return 0;
+        }
+        if(tuvl01_now_ms()>=end)return -5;
+        pause_ms(100);
     }
 }
 int tuvl01_receive(tuvl01_session *s,uint8_t *out,size_t capacity,int timeout_ms){
@@ -113,3 +143,5 @@ void tuvl01_service(tuvl01_session *s,int ping_ms,int keepalive_ms){
         send_to(s->control,TUVL01_CONTROL_PORT,request,sizeof request);
     }
 }
+
+

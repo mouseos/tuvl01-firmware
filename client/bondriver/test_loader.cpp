@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+﻿// SPDX-License-Identifier: MIT
 // Loads BonDriver_TUVL01.dll the way TVTest does (LoadLibrary, CreateBonDriver,
 // dynamic_cast to IBonDriver2 with MSVC RTTI) and reads TS for a few seconds.
 #include "IBonDriver.h"
@@ -19,9 +19,9 @@ static int run(const char *dll,int seconds){
     IBonDriver2 *d=dynamic_cast<IBonDriver2 *>(base);
     printf("dynamic_cast<IBonDriver2*>: %s\n",d?"ok":"NULL");
     if(!d)return 3;
-    printf("tuner=%ls space0=%ls ch0=%ls ch1=%p\n",d->GetTunerName(),d->EnumTuningSpace(0),d->EnumChannelName(0,0),(const void *)d->EnumChannelName(0,1));
+    printf("tuner=%ls spaces=%ls,%ls ch0=%ls ch39=%ls ch40=%p\n",d->GetTunerName(),d->EnumTuningSpace(0),d->EnumTuningSpace(1),d->EnumChannelName(0,0),d->EnumChannelName(1,39),(const void *)d->EnumChannelName(0,40));
     if(!d->OpenTuner()){printf("OpenTuner failed\n");d->Release();return 4;}
-    if(!d->SetChannel(0UL,0UL)){printf("SetChannel failed\n");d->Release();return 5;}
+    if(!d->SetChannel(0UL,1UL)){printf("SetChannel failed\n");d->Release();return 5;}
     unsigned long start=GetTickCount(),total=0,sync_bad=0,calls=0,last=start;
     while(GetTickCount()-start<(unsigned long)seconds*1000){
         if(d->WaitTsStream(200)!=0)continue;
@@ -38,3 +38,4 @@ static int run(const char *dll,int seconds){
 extern "C" void entry(void){
     ExitProcess((unsigned)run("BonDriver_TUVL01.dll",8));
 }
+

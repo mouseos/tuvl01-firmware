@@ -16,25 +16,31 @@ static int write(unsigned bank,unsigned reg,unsigned v){
     uart_puts("TUNE ACK bank=");uart_hex(bank);uart_puts(" reg=");uart_hex(reg);
     uart_puts(" value=");uart_hex(v);uart_puts("\n");return 0;
 }
-void tuner_profile_receive(void){
-    uint8_t p[32],v;unsigned pos=0;
+/* Keeps servicing the Wi-Fi radio while waiting, so control clients keep getting
+ * answers and the AP stays alive during a (re)tune. */
+static void settle(unsigned ms){
     TickType_t start=xTaskGetTickCount();
-    uart_puts("TUNE profile ready bytes=32\n");
-    while(pos<sizeof p){
-        int c=uart_getc();
-        if(c>=0)p[pos++]=(uint8_t)c;
-        else {sdio_wifi_poll();vTaskDelay(1);}
-        if((TickType_t)(xTaskGetTickCount()-start)>=pdMS_TO_TICKS(3000)){
-            uart_puts("TUNE end status=transport-timeout\n");return;
-        }
+    while((TickType_t)(xTaskGetTickCount()-start)<pdMS_TO_TICKS(ms)){sdio_wifi_poll();vTaskDelay(1);}
+}
+int tuner_lock_wait(unsigned timeout_ms){
+    uint8_t v;
+    TickType_t start=xTaskGetTickCount();
+    for(;;){
+        /* Stable frame lock: the same criterion the TS stream start requires. */
+        if(!tuner_read_register(0x61,0x97,&v) && (v&0x18)==0x10)return 1;
+        if((TickType_t)(xTaskGetTickCount()-start)>=pdMS_TO_TICKS(timeout_ms))return 0;
+        settle(100);
     }
-    if(!tuner_profile_valid(p)){uart_puts("TUNE end status=rejected\n");return;}
+}
+int tuner_profile_apply(const uint8_t *p){
+    uint8_t v;
+    if(!tuner_profile_valid(p))return TUNER_PROFILE_REJECTED;
     uart_puts(p[27]==2?"TUNE mode=UHF-native-candidate\n":
               p[27]?"TUNE mode=UHF-partial-experimental\n":"TUNE mode=VLF-control\n");
     if(read(0x60,0xb9,&v))goto failed;
     uart_puts("TUNE pre-setting B9=");uart_hex(v);uart_puts("\n");
     if(read(0x60,0xd6,&v))goto failed;
-    if(!(v&1)){uart_puts("TUNE end status=not-calibrated\n");return;}
+    if(!(v&1))return TUNER_PROFILE_NOT_CALIBRATED;
     /* Bank 2 E8 is 0x0f after initialization, which leaves the receiver about
      * 20 dB less sensitive (measured RSSI and CN); values 0..2 do not. The
      * stock TS start writes 2 later, so select the same value before tuning. */
@@ -54,12 +60,12 @@ void tuner_profile_receive(void){
     if(write(0x60,0x74,p[15]) || write(0x61,0xed,p[26]))goto failed;
     for(unsigned n=0;n<4;n++)if(write(0x60,0xc8+n,p[19+n]))goto failed;
     if(write(0x60,0x78,p[25]))goto failed;
-    vTaskDelay(pdMS_TO_TICKS(10));
+    settle(10);
     unsigned frequency=((uint32_t)p[4]<<24|(uint32_t)p[5]<<16|(uint32_t)p[6]<<8|p[7])/1000;
     if(write(0x60,0xcc,frequency>>2) ||
        write(0x60,0xcd,((frequency&3)<<6)|(p[23]&0x3f)) ||
        write(0x60,0xce,0xc0|(p[24]&0x3f)))goto failed;
-    vTaskDelay(pdMS_TO_TICKS(20));
+    settle(20);
     if(read(0x60,0xb9,&v))goto failed;
     uart_puts("TUNE pre-trigger B9=");uart_hex(v);uart_puts("\n");
     /* UHF full tuning clears only BA[7:4]; keep BA[3:0]. */
@@ -71,15 +77,34 @@ void tuner_profile_receive(void){
         if(v&0x80){
             /* Tuning completion is not broadcast lock or valid transport data. */
             if(read(0x60,0xcf,&v) || read(0x60,0xd0,&v) || read(0x61,0xf1,&v))goto failed;
-            uart_puts("TUNE end status=sequence-complete\n");return;
+            return TUNER_PROFILE_OK;
         }
-        if(attempt<10)vTaskDelay(pdMS_TO_TICKS(300));
+        if(attempt<10)settle(300);
     }
-    uart_puts("TUNE end status=completion-timeout\n");return;
+    return TUNER_PROFILE_TIMEOUT;
 failed:
-    uart_puts("TUNE end status=i2c-failed\n");
+    return TUNER_PROFILE_I2C_FAILED;
 }
-void tuner_profile_switch(void){
+void tuner_profile_receive(void){
+    uint8_t p[32];unsigned pos=0;
+    TickType_t start=xTaskGetTickCount();
+    uart_puts("TUNE profile ready bytes=32\n");
+    while(pos<sizeof p){
+        int c=uart_getc();
+        if(c>=0)p[pos++]=(uint8_t)c;
+        else {sdio_wifi_poll();vTaskDelay(1);}
+        if((TickType_t)(xTaskGetTickCount()-start)>=pdMS_TO_TICKS(3000)){
+            uart_puts("TUNE end status=transport-timeout\n");return;
+        }
+    }
+    switch(tuner_profile_apply(p)){
+    case TUNER_PROFILE_OK:uart_puts("TUNE end status=sequence-complete\n");break;
+    case TUNER_PROFILE_REJECTED:uart_puts("TUNE end status=rejected\n");break;
+    case TUNER_PROFILE_NOT_CALIBRATED:uart_puts("TUNE end status=not-calibrated\n");break;
+    case TUNER_PROFILE_TIMEOUT:uart_puts("TUNE end status=completion-timeout\n");break;
+    default:uart_puts("TUNE end status=i2c-failed\n");
+    }
+}void tuner_profile_switch(void){
     if(tuner_ts_stream_active() || sdio_wifi_traffic_active()){
         uart_puts("TUNE switch end status=refused-active\n");return;
     }

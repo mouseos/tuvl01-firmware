@@ -16,6 +16,7 @@
 #include "wifi_wpa_console.h"
 #include "wifi_net.h"
 #include "wifi_ctl.h"
+#include "tuner_uhf.h"
 extern void port_yield_entry(void),port_tick_entry(void),port_sdio_entry(void);
 static void (*vectors[BOARD_VECTOR_COUNT])(void) __attribute__((aligned(1024)));
 _Static_assert(BOARD_SDHI0_VECTOR<BOARD_VECTOR_COUNT,"SDHI0 vector outside table");
@@ -42,7 +43,7 @@ static int stream_service_wait(TickType_t now,TickType_t slice_start,int progres
 static void usb_task(void *p) {
     (void)p;
     usb_init();
-    TickType_t slice_start=xTaskGetTickCount();
+    TickType_t slice_start=xTaskGetTickCount(),lock_at=slice_start;
     for (;;) {
         sdio_wifi_service_mark(0);
         usb_poll();int c=uart_getc();
@@ -54,6 +55,28 @@ static void usb_task(void *p) {
         }
         /* Wi-Fi control clients start/stop the stream through the same commands. */
         if(c<0)c=wifi_ctl_poll(xTaskGetTickCount(),pdMS_TO_TICKS(5000));
+        if(c<0){
+            unsigned tune_channel,tune_partial;
+            if(wifi_ctl_take_tune(&tune_channel,&tune_partial)){
+                /* The stream cannot follow a retune: stop it, tune, and let the client start again. */
+                uint8_t profile[32];
+                if(tuner_ts_stream_active())tuner_ts_stream_stop();
+                int ok=!tuner_uhf_profile(tune_channel,tune_partial,profile) && tuner_profile_apply(profile)==TUNER_PROFILE_OK;
+                /* A new frame lock takes a while; START is refused before it, so wait for it here. */
+                unsigned locked=ok && tuner_lock_wait(4000);
+                uart_puts(ok?(locked?"TUNE wifi end status=locked\n":"TUNE wifi end status=no-lock\n"):"TUNE wifi end status=failed\n");
+                wifi_ctl_tune_done(ok);
+                if(ok)wifi_ctl_set_lock(locked);
+            }else{
+                TickType_t lock_now=xTaskGetTickCount();
+                if(wifi_ctl_client_seen() && (TickType_t)(lock_now-lock_at)>=pdMS_TO_TICKS(1000)){
+                    uint8_t sync;
+                    lock_at=lock_now;
+                    /* Stable frame lock: the same criterion as the UART TMCC read. */
+                    if(!tuner_read_register(0x61,0x97,&sync))wifi_ctl_set_lock((sync&0x18)==0x10);
+                }
+            }
+        }
         if(c>=0 && c!='i' && c!='|' && c!=13 && c!=18 && c!=20 && c!=21 && c!=22 && c!=24)sdio_wifi_tx_bench_stop();
         if(c>=0 && c!=13 && c!=18 && c!=20 && c!=21 && c!=22 && c!=24 && c!='i' && c!='|' && c!='t' && c!='B' && c!='E' && c!='7' && c!='5' && c!='4' && c!='^')tuner_ts_stream_interrupt();
         if(c=='u')usb_debug();
@@ -228,7 +251,7 @@ void usb_idle(void){
 void firmware_main(void) {
     board_init();
     uart_puts("TUVL01 independent / FreeRTOS 11.1.0 / GNU SH2A BE\n");
-    uart_puts("Application revision=167\n");
+    uart_puts("Application revision=168\n");
     wifi_net_service=wifi_ctl_service;
     flash_init(); /* Read-only NOR diagnostics; write routines are not referenced. */
     for (unsigned i=0;i<BOARD_VECTOR_COUNT;i++) vectors[i]=fault;
