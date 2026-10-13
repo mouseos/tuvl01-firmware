@@ -230,6 +230,24 @@ python tools/pin_capture.py logs/pin-test.bin --test
 
 実機では通常の14chで3回、既存のプロファイル経路で13chへ再選局して1回実行しました。全4回、両caseとも全512点が `0F` で、既存SPI端子上の試験出力は確認できませんでした。14chでの観測幅は各case 5509 CMTカウント（公称約1.22 ms）、13chで9173（約2.04 ms）。レジスタ復帰と、その後の通常再初期化・選局の `ready`、SPI FIFO応答を確認しました。ソフトウェア観測の速度と間隔は一定ではなく、試験の出力ピン、波形、IQとの関係は未確定です。
 
+### メーカーのTSパターン生成機能
+
+同じ `chkpin` のmode 3は、メーカー試験アプリでTS test pattern outputと表示されます。アプリのAArch64 PLT呼出しと、ARM32/AArch64ライブラリのレジスタ設定を照合しました。
+
+| コマンド | mode 3のpacked引数 | メーカーの説明 |
+| --- | --- | --- |
+| pat1 | `00000003` | 416 kbps、going round、204 byte |
+| pat2 | `00000017` | 2.29 Mbps、ALL-AA、204 byte |
+| pat3 | `0000002B` | 8.11 Mbps、ALL-FF、204 byte |
+| pat4 | `0000003F` | 18.26 Mbps、ALL-00、204 byte |
+| pat5 | `0100000B` | 612 kbps、going round、204 byte、PID=0 |
+
+`bw13` の任意設定は、固定bit0=1、bit1=188/204 byte、bits2..3=ビットレート、bits4..6=round/AA/FF/00/nullの指定です。packed bit24=0ではMain1 E7の全バイトへ設定されます。bit24=1の `bw1` はMain2 C2/C3/C4へパターン等と13ビットPIDを設定します。これらのビットレートはメーカーのTS生成ラベルで、IQサンプルレートではありません。
+
+mode 3は最初にTPM=0（TS Serial）、TSSEL=0、GPIO7SEL=1へ変更し、TSERRSELは維持します。その後、フルセグ側ならMain1 08 bit0=1、メーカーの `tuning(0,13)`、Sub 72/73/2DとMain1 0D/0E/0Fの固定値設定を含みます。最後のMain1 E8のread→writeは同じレジスタ値の読出し・書戻しで、波形の搬出ではありません。Main2 E8の出力モード設定とも区別します。
+
+既知の生成パターンは、正常受信に依存しない取得経路の検証候補です。ただし、メーカーの設定は通常のSPIモードを変更するため、既存SPI FIFOへ生成データが届くかは未確認です。E7だけの変更でメーカー処理を再現したことにはなりません。今回、この分岐の実機実行やRF固定値の移植はしておらず、IQ取得も未確認です。
+
 ### GPIO読出しの自己試験
 
 通常SPI設定で `python tools/uart.py tuner-pin-selftest --port COMx --log logs/pin-selftest.bin`（直接UARTなら `,`）を実行できます。DMA/RSPI停止、既知の端子設定、E8/F8の通常SPIモード、E7の試験停止、PD5のチップ選択が非アクティブであることを確認します。PD4だけをGPIO出力にしてSPIクロックのLow/Highを16点比較し、端子機能・方向・出力ラッチを戻します。各点でチップ選択の非アクティブも確認し、崩れたら試験を打ち切ります。復調器レジスタへの書込みはありません。
