@@ -95,6 +95,7 @@ class Transport:
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     command_arg=p.add_argument('command',choices=['upload','resume','run','cycle','save','recover','diag','pins','sdio','wifi','mac','capability','scan','board','ap','apstop','load','audit','wifi-stats','wifi-verbose','wifi-clock','wifi-width','wifi-read-poll','wifi-write-poll','wifi-ts-feedback','wifi-nic-stats','wifi-link','wifi-rate','wifi-poll-reuse','wifi-status-poll','wifi-poll-budget','wifi-irq','wifi-read-check','tuner','tuner-board','tuner-analog','tuner-init','ts-burst','ts-aggregate','ts-probe','ts-output','ts-dma','ts-dma-long','ts-benchmark','ts-clock','ts-clock-max','icache','tuner-monitor','tuner-fec','tuner-quality','tmcc','uhf-base','vlow-base','serve','loader-update'])
+    command_arg.choices += ['tuner-program-port']
     p.add_argument('--port',required=True);p.add_argument('--image',type=pathlib.Path)
     p.add_argument('--log',type=pathlib.Path,required=True)
     p.add_argument('--benchmark-seconds',type=int,
@@ -200,6 +201,13 @@ def main():
             if a.command in ('run','cycle'):t.run()
             if a.command=='save':t.save()
             if a.command=='recover':t.recovery()
+            if a.command=='tuner-program-port':
+                t.write(b'i');t.expect('UART application')
+                t.write(b'\x01')
+                result=t.wait(lambda s:s.startswith('PROGRAM probe end status='),15)
+                print(result)
+                if not result.endswith('=read-restored-unclassified'):raise RuntimeError(result)
+                t.write(b'i');t.expect('UART application')
             if a.command=='diag':
                 t.write(b'u');print(t.wait(lambda s:s.startswith('CLOCK FRQCR=')))
             if a.command=='pins':

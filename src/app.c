@@ -187,6 +187,7 @@ static void usb_task(void *p) {
         if(c==24)sdio_wifi_quiet_sample(tuner_quality);
         if(c==25)tuner_rf_switch();
         if(c==26)tuner_reg_access();
+        if(c==1)tuner_program_port_probe();
         if(c==27)tuner_gpio_dump();
         if(c==28)tuner_gpio_drive();
         if(c==29)tuner_gpio_release();
