@@ -34,7 +34,7 @@ class AppDispatch(unittest.TestCase):
         routes = app[start:app.index('        sdio_wifi_service_mark(1);', start)]
         stop_start = app.index("        if(c>=0 && c!='i'")
         prelude = app[stop_start:start]
-        calls = re.findall(r'\b((?:(?:usb_|sdio_|tuner_|wifi_wpa_|loader_)\w+|instruction_cache_toggle))\(([^)]*)\)', routes)
+        calls = re.findall(r'\b((?:(?:usb_|sdio_|tuner_|wifi_wpa_|loader_|board_led_)\w+|instruction_cache_toggle))\(([^)]*)\)', routes)
         calls += re.findall(r'\b((?:sdio_|tuner_)\w+)\(([^)]*)\)', prelude)
         names = sorted(set(name for name, _ in calls))
         stubs = []

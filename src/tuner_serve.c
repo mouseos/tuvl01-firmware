@@ -9,15 +9,19 @@
 #include "tuner_profile.h"
 #include "tuner_uhf.h"
 #include "tuner_serve.h"
+#include "board_led.h"
 void tuner_serve(void){
     uint8_t profile[32],v;
     uart_puts("SERVE start\n");
+    board_led_init();board_led_state(BOARD_LED_BUSY);board_led_service(0,0);
     /* Tuner first: the TS setup must precede the Wi-Fi radio start. */
     tuner_initialize();
-    if(tuner_read_register(0x60,0xd6,&v) || !(v&1)){uart_puts("SERVE end status=tuner-not-calibrated\n");return;}
+    if(tuner_read_register(0x60,0xd6,&v) || !(v&1)){
+        board_led_state(BOARD_LED_FAILED);uart_puts("SERVE end status=tuner-not-calibrated\n");return;
+    }
     TickType_t tuned=xTaskGetTickCount();
     if(tuner_uhf_profile(TUVL01_DEFAULT_CHANNEL,0,profile) || tuner_profile_apply(profile)!=TUNER_PROFILE_OK){
-        uart_puts("SERVE end status=tune-failed\n");return;
+        board_led_state(BOARD_LED_FAILED);uart_puts("SERVE end status=tune-failed\n");return;
     }
     /* The former sequence waited 6 s after tuning before configuring the TS path. */
     tuner_lock_wait(6000);
@@ -42,5 +46,6 @@ void tuner_serve(void){
     tuner_ts_stream_burst();
     tuner_ts_stream_aggregate();
     sdio_wifi_ap();
+    board_led_state(sdio_wifi_ap_running()?BOARD_LED_READY:BOARD_LED_FAILED);
     uart_puts(sdio_wifi_ap_running()?"SERVE end status=ready\n":"SERVE end status=ap-failed\n");
 }

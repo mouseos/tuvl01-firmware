@@ -19,6 +19,7 @@
 #include "tuner_uhf.h"
 #include "tuner_serve.h"
 #include "loader_update.h"
+#include "board_led.h"
 extern void port_yield_entry(void),port_tick_entry(void),port_sdio_entry(void);
 static void (*vectors[BOARD_VECTOR_COUNT])(void) __attribute__((aligned(1024)));
 _Static_assert(BOARD_SDHI0_VECTOR<BOARD_VECTOR_COUNT,"SDHI0 vector outside table");
@@ -45,6 +46,7 @@ static int stream_service_wait(TickType_t now,TickType_t slice_start,int progres
 static void usb_task(void *p) {
     (void)p;
     usb_init();
+    board_led_init();
     TickType_t slice_start=xTaskGetTickCount(),lock_at=slice_start;
 #ifdef TUVL01_AUTOSERVE
     /* Standalone image (make AUTOSERVE=1): come up serving without any PC. */
@@ -192,6 +194,7 @@ static void usb_task(void *p) {
         if(c==31)sdio_wifi_tim();
         if(c==16)tuner_serve();
         if(c==19)loader_update_command();
+        if(c==10)board_led_command();
         if(c=='B')tuner_ts_stream_start();
         if(c=='E')tuner_ts_stream_stop();
         if(c=='r')tuner_tmcc_read();
@@ -202,6 +205,7 @@ static void usb_task(void *p) {
         sdio_wifi_poll();
         sdio_wifi_tx_bench_poll();
         tuner_ts_stream_wifi_ticks((TickType_t)(xTaskGetTickCount()-poll_begin));
+        board_led_service(xTaskGetTickCount(),tuner_ts_stream_active());
         sdio_wifi_service_mark(2);
         int stream_progress=tuner_ts_stream_poll();
         tuner_quality_watch_poll();
