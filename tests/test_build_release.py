@@ -39,4 +39,26 @@ class Verify(unittest.TestCase):
         # A development build is a valid build, just not a standalone one: only that single problem is acceptable.
         self.assertTrue(problems==[] or problems==['application is not the standalone variant (built without AUTOSERVE=1)']
                         or problems==['application is the development variant'] or all('variant' in q for q in problems),problems)
+class Vendor(unittest.TestCase):
+    """Without a dump the shipped manufacturer data must be exactly the expected bytes."""
+    def run_main(self,files):
+        import tempfile
+        with tempfile.TemporaryDirectory() as t:
+            t=pathlib.Path(t);(t/'firmware').mkdir()
+            for name,data in files.items():(t/'firmware'/name).write_bytes(data)
+            old=br.ROOT;br.ROOT=t
+            try:
+                import io,contextlib
+                with contextlib.redirect_stderr(io.StringIO()) as err:rc=br.main(['--out',str(t/'out'),'--no-build'])
+                return rc,err.getvalue(),(t/'out').exists()
+            finally:br.ROOT=old
+    def real(self):
+        return {n:(ROOT/'firmware'/n).read_bytes() for n in br.extract_vendor.BLOCKS if (ROOT/'firmware'/n).exists()}
+    def test_missing_blob_is_refused(self):
+        rc,err,made=self.run_main({});self.assertEqual(rc,1);self.assertIn('missing',err);self.assertFalse(made)
+    def test_tampered_blob_is_refused_and_nothing_is_written(self):
+        files=self.real()
+        if len(files)<2:self.skipTest('vendor data not present')
+        name=next(iter(files));bad=bytearray(files[name]);bad[10]^=1;files[name]=bytes(bad)
+        rc,err,made=self.run_main(files);self.assertEqual(rc,1);self.assertIn('SHA-256',err);self.assertFalse(made)
 if __name__=='__main__':unittest.main()

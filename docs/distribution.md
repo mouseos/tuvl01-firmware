@@ -15,15 +15,22 @@
 
 1. **最初に元のSPI（S25FL164K、8MiB）を全部読み出して保管します。** 復旧とメーカー製データの取り出しに使います。
    読出しは2回行い、2つが一致することを確認してください。
-2. [ビルド手順](build.md)の環境（WSLのUbuntu、`python3 tools/bootstrap.py`済み）で、元ダンプから書込みイメージを作ります。
+2. 書込みイメージを用意します。次のどちらかです。
+
+   **(a) 配布済みのイメージを使う（ビルド不要）。** リリースの`tuvl01-spi-8MiB.bin`を、`SHA256SUMS.txt`と照合して使います。
+   ビルド済みで、リポジトリに同梱したメーカー製データ（[NOTICE](../firmware/NOTICE.md)）を含みます。
+
+   **(b) 自分でビルドする。** [ビルド手順](build.md)の環境（WSLのUbuntu、`python3 tools/bootstrap.py`済み）で作ります。
 
    ```powershell
-   python tools/build_release.py 元ダンプ.BIN --out release
+   python tools/build_release.py --out release                 # 同梱のメーカー製データを使う
+   python tools/build_release.py 元ダンプ.BIN --out release    # 自分の機体のダンプから取り出して使う
    ```
 
-   これが、ダンプの検査、メーカー製データ2つの取り出し（SHA-256が一致しなければ拒否）、単独起動版のビルド（`make AUTOSERVE=1`）、
-   結果の検査（loaderの位置、applicationの位置・CRC、単独起動版であること）、`release/`への出力までを行います。
-   開発版（`AUTOSERVE`なし）や、レイアウトが違うイメージは、出力せずにエラーで止まります。
+   これが、メーカー製データの検査（SHA-256が一致しなければ拒否。ダンプを渡した場合はそこから取り出し）、
+   単独起動版のビルド（`make AUTOSERVE=1`）、結果の検査（loaderの位置、applicationの位置・CRC、単独起動版であること）、
+   `release/`への出力までを行います。開発版（`AUTOSERVE`なし）や、レイアウトが違うイメージは、出力せずにエラーで止まります。
+   2つの方法で作ったイメージは、バイト単位で同一であることを確認しています。
 3. `release/tuvl01-spi-8MiB.bin`をS25FL164Kへ、チップ全体に書込み、**読み戻して一致を確認します**（`SHA256SUMS.txt`と照合）。
 4. 組み立てて電源を入れます。約25秒でAPが上がります（LED: 起動中は赤、待機中は緑がゆっくり点滅、接続中は緑の点灯）。
 
@@ -31,8 +38,8 @@
 そのため8MiB全体を置き換えても、失われるのは標準アプリ（標準loaderとセットでしか起動しない）だけです。
 標準ファームに戻すには、保管した元ダンプを書き戻します。
 
-出力の`tuvl01-spi-8MiB.bin`にはメーカーのradio firmwareが入っています。**自分の機体用に保管し、公開しないでください。**
-公開できるのは、ソースコード、`BonDriver_TUVL01.dll`、この手順書です。
+`tuvl01-spi-8MiB.bin`にはメーカーのradio firmware等が入っています。権利者の許諾は未確認です
+（[NOTICE](../firmware/NOTICE.md)）。再配布の可否を自分で判断できない場合は、方法(b)でダンプから作ってください。
 
 #### 確認済みの範囲
 
@@ -49,7 +56,8 @@ loaderは電源投入後5秒以内に1バイト受信すると待機に残りま
 ## メーカー製データの扱い
 
 MT5931のradio firmware（136,576B）とMN885521のpatch（4,341B）はメーカーのデータで、再配布の許諾は未確認です
-（[NOTICE](../firmware/NOTICE.md)）。公開配布物にはこの2つを含めず、利用者の機体のSPIから`tools/extract_vendor.py`で取り出します。
+（[NOTICE](../firmware/NOTICE.md)）。リポジトリ管理者の判断で同梱していますが、自分の機体のSPIから
+`tools/extract_vendor.py`で取り出すこともできます。
 どちらも標準ファームのSPI内にそのまま連続して存在し（MT5931は`0x103650`、PSEQは`0xffe94`）、
 開発機のダンプから取り出した結果は、現在のリポジトリのコピーとバイト単位で一致しました。
 標準ファームの版が違うダンプでは、SHA-256が一致しないため取り出しを拒否します。

@@ -56,18 +56,26 @@ def run_make(clean):
 
 def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__,formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument('dump',type=pathlib.Path)
+    p.add_argument('dump',type=pathlib.Path,nargs='?',help='stock SPI dump; omit to use the data in firmware/')
     p.add_argument('--out',type=pathlib.Path,default=ROOT/'release')
     p.add_argument('--no-build',action='store_true',help='package the existing build/ (still verified)')
     a=p.parse_args(argv)
-    try:blocks=extract_vendor.extract(a.dump.read_bytes())
-    except (OSError,ValueError) as e:
-        print('ERROR:',e,file=sys.stderr);return 1
     fw=ROOT/'firmware'
-    for name,data in blocks.items():
-        target=fw/name
-        if not target.exists() or target.read_bytes()!=data:
-            fw.mkdir(exist_ok=True);target.write_bytes(data);print('wrote',target)
+    if a.dump is not None:
+        try:blocks=extract_vendor.extract(a.dump.read_bytes())
+        except (OSError,ValueError) as e:
+            print('ERROR:',e,file=sys.stderr);return 1
+        for name,data in blocks.items():
+            target=fw/name
+            if not target.exists() or target.read_bytes()!=data:
+                fw.mkdir(exist_ok=True);target.write_bytes(data);print('wrote',target)
+    else:
+        # No dump: use the manufacturer data that ships in firmware/, but only if it is exactly the expected one.
+        for name,(offset,size,sha) in extract_vendor.BLOCKS.items():
+            try:data=(fw/name).read_bytes()
+            except OSError as e:print('ERROR: %s missing (%s); pass a stock dump to extract it'%(name,e),file=sys.stderr);return 1
+            if len(data)!=size or hashlib.sha256(data).hexdigest()!=sha:
+                print('ERROR: firmware/%s does not match the expected SHA-256'%name,file=sys.stderr);return 1
     if not a.no_build:
         rc=run_make(['app.elf','app.bin','app.img','initial-spi.bin','boot.bin','boot.elf','manifest.json'])
         if rc:print('ERROR: build failed (%d)'%rc,file=sys.stderr);return 2
@@ -81,12 +89,13 @@ def main(argv=None):
         return 3
     out=a.out;out.mkdir(parents=True,exist_ok=True)
     (out/'tuvl01-spi-8MiB.bin').write_bytes(spi)
-    sums={'tuvl01-spi-8MiB.bin':hashlib.sha256(spi).hexdigest(),'stock-dump-input':hashlib.sha256(a.dump.read_bytes()).hexdigest()}
+    sums={'tuvl01-spi-8MiB.bin':hashlib.sha256(spi).hexdigest()}
+    if a.dump is not None:sums['stock-dump-input']=hashlib.sha256(a.dump.read_bytes()).hexdigest()
     dll=ROOT/'client'/'bondriver'/'build'/'BonDriver_TUVL01.dll'
     if dll.exists():
         shutil.copy2(dll,out/dll.name);sums[dll.name]=hashlib.sha256(dll.read_bytes()).hexdigest()
     (out/'SHA256SUMS.txt').write_text(''.join('%s  %s\n'%(v,k) for k,v in sums.items()),encoding='utf-8')
     print('OK: wrote',out/'tuvl01-spi-8MiB.bin',len(spi),'bytes');print(json.dumps(sums,indent=2))
-    print('Next: back up the unit\'s SPI (already done: the dump you passed), then program this image into the S25FL164K and verify it by reading it back.')
+    print('Next: read out and keep the unit\'s own SPI first (twice, compare), then program this image into the S25FL164K and verify it by reading it back.')
     return 0
 if __name__=='__main__':raise SystemExit(main())
