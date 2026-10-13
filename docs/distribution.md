@@ -1,90 +1,46 @@
-# 配布と導入
+# 導入
 
-## 導入経路
+## SPIプログラマで書込む
 
-| 経路 | ケース開封 | 状態 |
-| --- | --- | --- |
-| A. SPIプログラマで書込み | 必要 | 動作確認済み（開発機） |
-| B. UART（本ファームのloaderが入っている機体への更新） | 必要 | 動作確認済み（`recover`→`upload`→`save`） |
-| C. 標準ファームのWi-Fi更新機能を使う | 不要 | **調査中・未検証**（下記） |
-
-標準ファームが入ったままの機体に最初の1回を入れる手段は、現時点ではAだけが確認済みです。
-2回目以降は、本ファームがWi-FiやUARTから自分自身を更新できるようにする余地があります（未実装）。
-
-### A. SPIプログラマ（配布の標準手順）
-
-1. **最初に元のSPI（S25FL164K、8MiB）を全部読み出して保管します。** 復旧とメーカー製データの取り出しに使います。
+1. **最初に元のSPI（S25FL164K、8MiB）を全部読み出して保管します。** 標準ファームへ戻すのに使います。
    読出しは2回行い、2つが一致することを確認してください。
 2. 書込みイメージを用意します。次のどちらかです。
 
-   **(a) 配布済みのイメージを使う（ビルド不要）。** リリースの`tuvl01-spi-8MiB.bin`を、`SHA256SUMS.txt`と照合して使います。
-   ビルド済みで、リポジトリに同梱したメーカー製データ（[NOTICE](../firmware/NOTICE.md)）を含みます。
-
-   **(b) 自分でビルドする。** [ビルド手順](build.md)の環境（WSLのUbuntu、`python3 tools/bootstrap.py`済み）で作ります。
+   - リリースの`tuvl01-spi-8MiB.bin`を使います。`SHA256SUMS.txt`と照合してください。
+   - 自分でビルドします。[ビルド手順](build.md)の環境（WSLのUbuntu、`python3 tools/bootstrap.py`済み）で次を実行します。
 
    ```powershell
-   python tools/build_release.py --out release                 # 同梱のメーカー製データを使う
+   python tools/build_release.py --out release                 # firmware/ のデータを使う
    python tools/build_release.py 元ダンプ.BIN --out release    # 自分の機体のダンプから取り出して使う
    ```
 
-   これが、メーカー製データの検査（SHA-256が一致しなければ拒否。ダンプを渡した場合はそこから取り出し）、
-   単独起動版のビルド（`make AUTOSERVE=1`）、結果の検査（loaderの位置、applicationの位置・CRC、単独起動版であること）、
-   `release/`への出力までを行います。開発版（`AUTOSERVE`なし）や、レイアウトが違うイメージは、出力せずにエラーで止まります。
-   2つの方法で作ったイメージは、バイト単位で同一であることを確認しています。
-3. `release/tuvl01-spi-8MiB.bin`をS25FL164Kへ、チップ全体に書込み、**読み戻して一致を確認します**（`SHA256SUMS.txt`と照合）。
-4. 組み立てて電源を入れます。約25秒でAPが上がります（LED: 起動中は赤、待機中は緑がゆっくり点滅、接続中は緑の点灯）。
+   `firmware/`のデータはSHA-256を検査し、一致しなければ止まります。ダンプを渡した場合はそこから取り出します。
+   単独起動版（`make AUTOSERVE=1`）をビルドし、loaderとapplicationの位置・CRC、単独起動版であることを検査してから、
+   `release/tuvl01-spi-8MiB.bin`と`SHA256SUMS.txt`（あれば`BonDriver_TUVL01.dll`も）を出力します。
+3. `tuvl01-spi-8MiB.bin`をS25FL164Kへ、チップ全体に書込みます。**読み戻して、書込んだイメージと一致することを確認します。**
+4. 組み立てて電源を入れます。約25秒でAPが上がります。LEDは、起動中が赤、待機中（未接続）が緑のゆっくりした点滅、接続中が緑の点灯です。
+5. PCのWi-Fiを`TUVL01`（open）へ接続し、TVTestを`BonDriver_TUVL01.dll`で起動します（[チューナー](tuner.md)）。
 
-元ダンプの実測では、中身があるのはloader領域（先頭8KiB）と標準アプリ（`0x40000`以降）だけで、機体固有のデータは見つかっていません。
-そのため8MiB全体を置き換えても、失われるのは標準アプリ（標準loaderとセットでしか起動しない）だけです。
-標準ファームに戻すには、保管した元ダンプを書き戻します。
+標準ファームのSPIで中身があるのは、loader領域（先頭8KiB）と標準アプリ（`0x40000`以降）だけです。
+8MiB全体を置き換えると標準アプリは消えます。標準ファームに戻すときは、保管した元ダンプを書き戻します。
 
-`tuvl01-spi-8MiB.bin`にはメーカーのradio firmware等が入っています。権利者の許諾は未確認です
-（[NOTICE](../firmware/NOTICE.md)）。再配布の可否を自分で判断できない場合は、方法(b)でダンプから作ってください。
+## UARTで更新する
 
-#### 確認済みの範囲
+本ファームのloaderが入っている機体では、UARTでapplicationを入れ替えられます。
 
-- loaderは、開発機に実際に書き込んで動作しているものと、バイト単位で同一です（電源投入から単独起動を確認）。
-- アプリはUART経由で開発機のSPIに保存し、読み戻して単独起動を確認しています。
-- **`tuvl01-spi-8MiB.bin`を8MiB全体としてチップに書き込む手順は、まだ実機で試していません**（開発機はloaderとアプリを別々に書いたため）。
-  イメージの構成（loader＋アプリのみ、他は`ff`）は、機械的に検査しています。
+```powershell
+python tools/uart.py recover --port COMx --log logs/update.bin
+python tools/uart.py upload --port COMx --image app-autoserve.img --log logs/update.bin
+python tools/uart.py save --port COMx --log logs/update.bin
+```
 
-### B. UART
+loaderは電源投入後5秒以内にUARTへ1バイト受信すると、待機に残ります（[image仕様](images-and-recovery.md)）。
 
-`tools/uart.py recover`→`upload --image app-autoserve.img`→`save`で、アプリを入れ替えられます。
-loaderは電源投入後5秒以内に1バイト受信すると待機に残ります（[image仕様](images-and-recovery.md)）。
+## 自分の機体のダンプからデータを取り出す
 
-## メーカー製データの扱い
+MT5931のradio firmwareとMN885521のPSEQは、標準ファームのSPI内にそのまま入っています。
+元ダンプから`firmware/`へ取り出せます（版が違うダンプはSHA-256が一致せず、拒否されます）。
 
-MT5931のradio firmware（136,576B）とMN885521のpatch（4,341B）はメーカーのデータで、再配布の許諾は未確認です
-（[NOTICE](../firmware/NOTICE.md)）。リポジトリ管理者の判断で同梱していますが、自分の機体のSPIから
-`tools/extract_vendor.py`で取り出すこともできます。
-どちらも標準ファームのSPI内にそのまま連続して存在し（MT5931は`0x103650`、PSEQは`0xffe94`）、
-開発機のダンプから取り出した結果は、現在のリポジトリのコピーとバイト単位で一致しました。
-標準ファームの版が違うダンプでは、SHA-256が一致しないため取り出しを拒否します。
-
-## C. 標準ファームのWi-Fi更新（調査メモ）
-
-標準ファームのイメージ（`success_S25FL164K(ISP)_20261004_192310.BIN`）の文字列と逆アセンブルから、
-Wi-Fi制御系のコマンドとして`UpdateStart`と`Updater`が実装されていることを確認しました。
-純正アプリ（TS PLAY）側にはこの呼出しがなく、通信形式の実体は標準ファーム側からしか分かりません。
-
-確認できたこと:
-
-- コマンドとして`InitRequest`、`TuneRequest`、`TspRequest`、`StatusRequest`、`ExitRequest`、`Reset`、`UpdateStart`、`Updater`がある。
-- 状態機械に`SM_FW_UPDATE`、`FWUP_START`、`FWUP_COMPLETE`、`FWUP_ERROR`、`SM_FWUP_FAILURE`がある。
-- `Updater`の受信処理は、先頭が`コマンド番号(1B)、通番(1B)、長さ(2B)、更新データ長(4B)`で、データをRAM上の書込み用バッファへ貯める。
-- 書込み先は2つのバンクで、メモリ割付け上`0x18040000`（SPI `0x40000`）と`0x18440000`（SPI `0x440000`）。各バンクの末尾にCRC32が付き、
-  生成したCRCと一致しなければ`Error : Generated CRC is different from Attached CRC!!`で拒否する（署名の処理は見つかっていない）。
-- `UpdateStart`が先にないと`Updater`は受け付けない。ACアダプタ接続の確認がある。
-- 検査後、バッファの内容をフラッシュへ書き込む関数（`0x1805acf0`付近）がある。
-
-未確認のこと（ここから先は、実際に動かす前に必要）:
-
-- 通信路（UDPかTCPか、ポート番号）、各コマンド番号、イメージの正確な形式（ヘッダ、バンクの切替、起動時の選択）。
-- 標準のloaderがバンクのどのアドレスへ制御を渡すか。本ファームは「RAMへ読み出して実行」する作りなので、
-  標準loaderから起動するには、バンクに入れる最初の段（本ファームのloaderをXIPで置く等）が必要。
-- 失敗した場合の復旧。復旧にはSPIプログラマが必要になる可能性が高い。
-- 標準ファームの更新がそのまま使える機体（標準ファームが残っている機体）で試すこと。開発機は標準ファームを上書き済みで、
-  元のSPIに戻すにはプログラマが必要。
-
-この経路を使う場合は、開発機に標準ファームを戻し、プログラマを繋いだ状態で、バンク書込みだけを試します。
+```powershell
+python tools/extract_vendor.py 元ダンプ.BIN
+```

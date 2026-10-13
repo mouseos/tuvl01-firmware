@@ -1,9 +1,5 @@
-"""Extract the two manufacturer data blocks the firmware build needs from the user's OWN SPI dump.
-
-The MT5931 radio firmware and the MN885521 patch records are the manufacturer's data. Their
-redistribution terms are unknown (firmware/NOTICE.md), so a public release does not ship them:
-every owner has them in the SPI NOR of the unit (read it out with a programmer before flashing
-anything; that backup is needed for recovery anyway).
+"""Extract the two data blocks the firmware build needs (MT5931 radio firmware, MN885521 patch
+records) from a stock SPI dump of the unit.
 
 usage: python tools/extract_vendor.py STOCK_DUMP.BIN [--out firmware]
 

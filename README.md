@@ -3,8 +3,7 @@
 日本アンテナ製 i-dio Wi-Fiチューナー TUVL01（Renesas SH726A、SH-2A、big endian）用の独立ファームウェアです。
 標準ファームの代わりに入れると、電源を入れるだけでUHFのテレビ放送（フルセグ・ワンセグ）をWi-Fi経由でPCへ送るチューナーになります。
 MCU側のCソース、startup、FreeRTOS Kernel、ドライバをソースからビルドします。
-MT5931用radio firmwareとMN885521用PSEQデータ（メーカー製データ）を同梱しています。**権利者の許諾は未確認です**。
-必ず[同梱メーカーbinaryの注意](firmware/NOTICE.md)を読んでください。
+MT5931用radio firmwareとMN885521用PSEQデータを`firmware/`に同梱しています。
 
 ## できること
 
@@ -20,7 +19,7 @@ MT5931用radio firmwareとMN885521用PSEQデータ（メーカー製データ）
 SPIプログラマで、S25FL164K（8MiB）へ書き込みます。**書込み前に、元のSPIを必ず読み出して保管してください**（標準ファームへ戻すのに必要です）。
 手順、確認済みの範囲、未確認の範囲は[配布と導入](docs/distribution.md)にあります。
 
-標準ファームの更新機能（Wi-Fi）を使えるかは調査中で、未検証です。ケース開封なしでの導入は、現時点ではできません。
+ケース開封なしでの導入には対応していません。
 
 ## 状態
 
@@ -78,4 +77,4 @@ tools\serve.ps1 -Port COMx
 - [Wi-FiとRSN機能](docs/wifi.md)
 - [UHF設定・TS転送・TVTest入力](docs/tuner.md)
 - [native USBの条件とプロトコル](docs/usb.md)
-- [ライセンス](docs/licenses.md)、[同梱メーカーbinary](firmware/NOTICE.md)
+- [ライセンス](docs/licenses.md)、[同梱データ](firmware/NOTICE.md)
