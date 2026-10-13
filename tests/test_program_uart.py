@@ -40,7 +40,7 @@ class RecoveryTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):t.recovery()
         self.assertEqual(t.sent,[b'i'])
     def test_diagnostic_commands_send_only_their_own_opcode(self):
-        for command,opcode,prefix in [('tuner-program-port',b'\x01','PROGRAM probe'),('tuner-program-burst',b'*','PROGRAM burst')]:
+        for command,opcode,prefix in [('tuner-program-port',b'\x01','PROGRAM probe'),('tuner-program-burst',b'*','PROGRAM burst'),('tuner-program-release',b'.','PROGRAM release')]:
             with self.subTest(command=command),tempfile.TemporaryDirectory() as directory:
                 t=ScriptedTransport(['UART application',prefix+' end status=read-restored-unclassified','UART application'])
                 argv=['uart.py',command,'--port','COM_FAKE','--log',str(pathlib.Path(directory)/'uart.bin')]
@@ -83,7 +83,7 @@ class RecoveryTests(unittest.TestCase):
     def test_probe_opcodes_do_not_dispatch_other_commands(self):
         import re
         source=(pathlib.Path(__file__).resolve().parents[1]/'src/app.c').read_text()
-        for opcode,call in [("'*'",'tuner_program_burst_probe'),("'`'",'tuner_pin_capture_probe'),("'-'",'tuner_pin_test_probe'),("','",'tuner_pin_gpio_selftest')]:
+        for opcode,call in [("'*'",'tuner_program_burst_probe'),("'.'",'tuner_program_release_probe'),("'`'",'tuner_pin_capture_probe'),("'-'",'tuner_pin_test_probe'),("','",'tuner_pin_gpio_selftest')]:
             dispatch=re.findall(r'if\(c=='+re.escape(opcode)+r'\)(\w+)\(',source)
             self.assertEqual(dispatch,[call])
 

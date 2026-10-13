@@ -8,6 +8,7 @@ void tuner_rf_switch(void);
 void tuner_reg_access(void);
 void tuner_program_port_probe(void);
 void tuner_program_burst_probe(void);
+void tuner_program_release_probe(void);
 void tuner_pin_capture_probe(void);
 void tuner_pin_test_probe(void);
 void tuner_pin_gpio_selftest(void);

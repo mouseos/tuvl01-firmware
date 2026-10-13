@@ -99,7 +99,7 @@ class Transport:
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     command_arg=p.add_argument('command',choices=['upload','resume','run','cycle','save','recover','diag','pins','sdio','wifi','mac','capability','scan','board','ap','apstop','load','audit','wifi-stats','wifi-verbose','wifi-clock','wifi-width','wifi-read-poll','wifi-write-poll','wifi-ts-feedback','wifi-nic-stats','wifi-link','wifi-rate','wifi-poll-reuse','wifi-status-poll','wifi-poll-budget','wifi-irq','wifi-read-check','tuner','tuner-board','tuner-analog','tuner-init','ts-burst','ts-aggregate','ts-probe','ts-output','ts-dma','ts-dma-long','ts-benchmark','ts-clock','ts-clock-max','icache','tuner-monitor','tuner-fec','tuner-quality','tmcc','uhf-base','vlow-base','serve','loader-update'])
-    command_arg.choices += ['tuner-program-port','tuner-program-burst','tuner-pin-capture','tuner-pin-test','tuner-pin-selftest']
+    command_arg.choices += ['tuner-program-port','tuner-program-burst','tuner-program-release','tuner-pin-capture','tuner-pin-test','tuner-pin-selftest']
     p.add_argument('--port',required=True);p.add_argument('--image',type=pathlib.Path)
     p.add_argument('--log',type=pathlib.Path,required=True)
     p.add_argument('--benchmark-seconds',type=int,
@@ -205,12 +205,15 @@ def main():
             if a.command in ('run','cycle'):t.run()
             if a.command=='save':t.save()
             if a.command=='recover':t.recovery()
-            if a.command in ('tuner-program-port','tuner-program-burst'):
+            if a.command in ('tuner-program-port','tuner-program-burst','tuner-program-release'):
                 t.write(b'i');t.expect('UART application')
-                burst=a.command=='tuner-program-burst'
-                t.write(b'*' if burst else b'\x01')
-                prefix='PROGRAM burst end status=' if burst else 'PROGRAM probe end status='
-                result=t.wait(lambda s:s.startswith(prefix),20)
+                opcode,prefix={
+                    'tuner-program-port':(b'\x01','PROGRAM probe end status='),
+                    'tuner-program-burst':(b'*','PROGRAM burst end status='),
+                    'tuner-program-release':(b'.','PROGRAM release end status='),
+                }[a.command]
+                t.write(opcode)
+                result=t.wait(lambda s:s.startswith(prefix),30)
                 print(result)
                 if not result.endswith('=read-restored-unclassified'):raise RuntimeError(result)
                 t.write(b'i');t.expect('UART application')

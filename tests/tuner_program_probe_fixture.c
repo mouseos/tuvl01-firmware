@@ -7,8 +7,8 @@
 #include "tuner.h"
 static uint8_t registers[256];
 static unsigned operations,fail_at,writes;
-static unsigned burst_short,burst_mismatch;
-static char output[2048];
+static unsigned burst_short,burst_mismatch,ignore_e2;
+static char output[8192];
 void uart_puts(const char *s){strcat(output,s);}
 void uart_hex(uint32_t v){char b[9];snprintf(b,sizeof b,"%08x",v);strcat(output,b);}
 int tuner_read_register(unsigned bank,unsigned reg,uint8_t *v){
@@ -17,10 +17,10 @@ int tuner_read_register(unsigned bank,unsigned reg,uint8_t *v){
     *v=registers[reg];return 0;
 }
 int tuner_write_register(unsigned bank,unsigned reg,uint8_t v){
-    assert(bank==0x61 && reg==0xf3 && (v==0xe0 || v==0xe3));
+    assert(bank==0x61 && reg==0xf3 && (v==0xe0 || v==0xe2 || v==0xe3));
     operations++;writes++;
     /* Model a write that reached the chip but reported a transport failure. */
-    registers[reg]=v;return operations==fail_at?-1:0;
+    registers[reg]=(ignore_e2 && v==0xe2)?0xe0:v;return operations==fail_at?-1:0;
 }
 int tuner_read_burst(unsigned bank,unsigned reg,uint8_t *bytes,unsigned count,unsigned *received){
     assert(bank==0x61 && count<=8);operations++;*received=0;
@@ -69,6 +69,30 @@ int main(void){
         tuner_program_burst_probe();
         assert(writes==0 && registers[0xf3]==0xe0);
         assert(strstr(output,fault?"validation-mismatch":"validation-burst-failed"));
+        operations=writes=fail_at=0;output[0]=0;
+        tuner_program_release_probe();
+        assert(writes==0 && registers[0xf3]==0xe0);
+        assert(strstr(output,fault?"validation-mismatch":"validation-burst-failed"));
     }
-    puts("PASS: finite reads, state guard, restore including uncertain write failure; no payload/address writes");
+    burst_short=burst_mismatch=0;
+    registers[0xf3]=0x23;operations=writes=fail_at=0;output[0]=0;
+    tuner_program_release_probe();
+    assert(writes==0 && registers[0xf3]==0x23 && strstr(output,"unexpected-state"));
+    unsigned release_operations=0;
+    for(unsigned fail=0;fail<=release_operations || fail==0;fail++){
+        memset(registers,0,sizeof registers);registers[0xf3]=0xe0;registers[0xf4]=2;registers[0xf5]=0x98;
+        operations=writes=0;fail_at=fail;output[0]=0;
+        tuner_program_release_probe();
+        if(!fail){release_operations=operations;assert(strstr(output,"read-restored-unclassified"));
+            assert(strstr(output,"mode=000000e2 type=single") && strstr(output,"mode=000000e2 type=burst"));}
+        assert(registers[0xf3]==0xe0 && registers[0xf4]==2 && registers[0xf5]==0x98);
+        assert(writes<=3 && strstr(output,"PROGRAM release end status="));
+    }
+    ignore_e2=1;operations=writes=fail_at=0;output[0]=0;
+    tuner_program_release_probe();
+    assert(registers[0xf3]==0xe0 && writes==2);
+    assert(strstr(output,"requested=000000e2 observed=000000e0"));
+    assert(strstr(output,"mode=000000e2 type=single port=000000f6 count=00000000"));
+    assert(strstr(output,"read-failed-restored"));
+    printf("PASS: finite reads, guards, uncertain-write restoration; release probe %u I/O failure positions; no payload/address writes\n",release_operations);
 }
