@@ -153,9 +153,33 @@ HTV31 2.44のメーカー試験アプリ `fullseg_test` は、`cfg_stm` を「St
 
 APIのpacked値では各選択が順にbits 2..4、5..7、8..10、11..13です。メーカーライブラリがこれをMain1 E5/E6またはMain2 F9/FAへ変換します。モードごとに幅・配置が異なり、ワンセグのSTM_ERRSELは1ビットのため、この表示表の全値が有効とは限りません。上記は同期・割込み・エラー等の状態端子の選択で、I/Qサンプルを出す設定の根拠は得られていません。`For testing use` の内容は未確定です。この表示表を理由とする追加の実機設定変更はしていません。
 
-同系列メーカーライブラリのピン試験は、D7/DA/DB/E7を設定する前にMain2 E8/F8の下位4ビットを0、Sub ACのbit2を1に変更します。通常のTUVL01 SPI設定はE8=`02`、F8=`01`で、試験時とは出力インターフェース設定が異なります。試験値をSPI経由のIQ出力設定として使用できる根拠はなく、値0のインターフェース種別と実際の出力ピンも未確認です。
+同系列メーカーライブラリのピン試験は、D7/DA/DB/E7を設定する前にMain2 E8/F8の下位4ビットを0、Sub ACのbit2を1に変更します。通常のTUVL01 SPI設定はE8=`02`、F8=`01`で、試験時とは出力インターフェース設定が異なります。下記の表示表からE8の値0はTS Serialと判明しました。試験値をSPI経由のIQ出力設定として使用できる根拠と、TUVL01での実際の試験出力ピンは未確認です。
 
 HTV31の通常受信アプリにも、選局成功後にE8の下位4ビットだけを0にする経路があります。同機のデバイスツリーには専用のTS CLK/EN/DATA端子があり、別のTS出力経路と整合します。E8の値0をIQ専用モードと解釈する根拠はありません。このHTC側の端子番号をTUVL01へ移植することもできません。
+
+### 出力インターフェースとGPIOの選択
+
+HTV31 2.44のメーカー試験アプリのポート設定表示（AArch64 ELF `B28C..B7F0`）と、メーカーライブラリの `cfg_pctl` を照合しました。TPMの16要素の表はELF `224A8`にあり、`R_AARCH64_RELATIVE` の再配置情報から文字列を復元しています。
+
+| TPM値（Main2 E8 bits 0..3） | メーカー表示 |
+| --- | --- |
+| 0 | TS Serial |
+| 1 | TS Parallel |
+| 2 | I2C/SPI(slave) |
+| 3 | I2C/SDIO |
+| 4 | I2C/Diversity(Master) |
+| 5 | I2C/Diversity(Slabe)（原文表記） |
+| 6..15 | reserve |
+
+Main2 F8 bits 0..1はTSSELで、0=`TS(DVB-SPI) Serial`、1=`SPI`、2=`TS like SPI`、3=`output Low`です。F8 bits 2..3はTSERRSELで、0=`TSERR`、1=`SYNC`、2=`TMCCERR`、3=`output Low`です。通常値E8=`02`・F8=`01`はTPM=2・TSSEL=1・TSERRSEL=0に対応します。
+
+| 選択項目 | レジスタ | 値0 | 値1 |
+| --- | --- | --- | --- |
+| GPIO1SEL | Sub AC bit1 | GPIO[1] | STM1 |
+| GPIO0SEL | Sub AC bit0 | GPIO[0] | STM0 |
+| GPIO7SEL | Sub AC bit2 | TSERR | GPIO[7] |
+
+メーカーAPIのpacked値のbits 15/16/17を、それぞれSub AC bits 1/0/2へ変換する処理は、ARM32版とAArch64版（`cfg_pctl` ELF `B3B0`）で確認しました。以前のモード0の端子観測はTS Serialへの切替試験であり、ピン試験のSub AC bit2=1はGPIO7選択です。これらは出力インターフェース・状態端子の設定で、IQ信号源を選ぶ証拠は得られていません。UARTのみの実機環境では、チップの端子名と既存PD4〜PD7配線の対応や高速波形は未確認です。この表の解析による追加の実機設定変更はしていません。
 
 ### TSデータ出力の選択
 
