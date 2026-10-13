@@ -200,6 +200,26 @@ TUVL01実機の既存RAMファームで、UARTのレジスタ診断からMain1 D
 
 `cfg_tsout` group 3はMain2 F0..F7のシリアル出力設定です。試験アプリにはCKRAT、DTLEN、TDTF、WDLEN、DTDLY、PWDTH、FSTRT、FSPOL、CYCLE、CKINIT、PRTYEN、SPIFIFO等として表示されます。特にMain2 F2はCKRATであり、Main1/Subのプログラム窓とは区別します。I/Q形式やサンプルレートを設定する項目だとは確認していません。
 
+### 試験用ラベルと復号・端子制御の区別
+
+メーカー試験アプリのTS表示と `cfg_tsout` のバンク・バイト配置を照合し、次の項目を確認しました。
+
+| 項目 | フルセグのレジスタ | メーカー表示 |
+| --- | --- | --- |
+| ERRSEL_F | Main1 DA bits 3..5、mask `38` | 0=TMCCERR、1=Low output、2=CDFLG、3..7=For testing use |
+| TRSOFF_F | Main1 37 bit3、mask `08` | 0=RS decoding ON、1=RS decoding OFF |
+| EI_F | Main1 37 bits 1..2、mask `06` | Specifies the error indicator bit |
+| DENOFF_F | Main1 D7 bit4、mask `10` | データ有効端子の出力/Low |
+| PCKOFF_F | Main1 D7 bit5、mask `20` | パケットクロック端子の出力/Low |
+| TCKOFF_F | Main1 D7 bit6、mask `40` | TSクロック端子の出力/Low |
+| TSDOOFF_F | Main1 D7 bit7、mask `80` | TSデータ端子の出力/Low |
+
+ERRSEL_Fの試験用値はエラー出力端子の選択表にあります。内容は未確定で、IQのデータ出力選択とは確認していません。Main1 37はRS復号のON/OFFとエラー表示を含み、RS復号をOFFにできることからADCサンプルやIQを読めるとは判断できません。
+
+以前のメーカーpin testで使ったD7のmask `70`はDENOFF/PCKOFF/TCKOFFの3ビットです。TSデータ端子のTSDOOFF（bit7）はこのマスクに含まれません。端子制御とデータ信号源の選択を区別します。この表示表の照合による追加の実機書込みはしていません。
+
+メーカーAPIの `tunerx_create_tdc` も調べました。ARM32版は28バイト、AArch64版は40バイトを `malloc` し、固定の初期値を格納して返します。関数内にレジスタ読出しや波形の取得処理はありません。名称にcapture bufferの意味を推測してIQ取得APIと扱う根拠は得られていません。これはこの関数の処理についての確認で、他の経路でのデータ取得を否定するものではありません。
+
 ### UARTだけで出力端子を観測する診断
 
 RAMへ新しいイメージをアップロードし、通常の初期化・選局・TS出力設定を済ませてから実行します。RSPI端子の初期化には `python tools/uart.py ts-probe --port COMx --log logs/ts-probe.bin` を使えます。
