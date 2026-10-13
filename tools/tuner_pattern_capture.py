@@ -10,6 +10,14 @@ from uart import Transport
 from ts_capture import validate_capture
 
 
+OBSERVED_REGISTERS = [
+    (0x60, 0x72), (0x60, 0x73), (0x60, 0x2d),
+    (0x61, 0x0d), (0x61, 0x0e), (0x61, 0x0f),
+    (0x61, 8), (0x61, 0xe7), (0x61, 0xe8), (0x61, 0x97),
+    (0x61, 0xd6), (0x61, 0xd7), (0x61, 0xda), (0x61, 0xdb),
+    (0x61, 0xed), (0x61, 0xf3), (0x62, 0xe8), (0x62, 0xf8), (0x62, 0xf2)]
+
+
 def register(t, bank, reg, value=None):
     t.write(bytes([26, ord('r' if value is None else 'w'), bank, reg,
                    0 if value is None else value]))
@@ -62,12 +70,15 @@ def main():
     parser.add_argument('--output-dir', type=pathlib.Path, required=True)
     parser.add_argument('--reinitialize', action='store_true',
                         help='Run normal SERVE initialization/default channel before taking snapshots')
+    parser.add_argument('--snapshot-state', action='store_true',
+                        help='Read 19 known control registers before/after each capture; adds UART latency')
     args = parser.parse_args()
     args.log.parent.mkdir(parents=True, exist_ok=True)
     args.output_dir.mkdir(parents=True, exist_ok=True)
     report = dict(started_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),
                   scope='E7 + Main1 08 bit0, normal SPI; partial factory recipe',
                   iq_identified=False, runs=[])
+    report['observations'] = []
     original = {}
     dirty = False
     with args.log.open('ab') as log:
@@ -104,7 +115,16 @@ def main():
                 current = register(t, 0x61, 8)
                 if current & 1 != control:
                     register(t, 0x61, 8, (current & ~1) | control)
+                if args.snapshot_state:
+                    observation = dict(label=label, before={
+                        f'{b:02X}:{r:02X}': f'{register(t, b, r):02X}'
+                        for b, r in OBSERVED_REGISTERS})
+                    report['observations'].append(observation)
                 data, result = capture(t, args.output_dir / f'{label}.bin')
+                if args.snapshot_state:
+                    observation['after'] = {
+                        f'{b:02X}:{r:02X}': f'{register(t, b, r):02X}'
+                        for b, r in OBSERVED_REGISTERS}
                 if register(t, 0x61, 0xe7) != source or register(t, 0x61, 8) & 1 != control:
                     raise RuntimeError('Source/control changed during capture')
                 if expected is not None:
