@@ -40,7 +40,7 @@ class RecoveryTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):t.recovery()
         self.assertEqual(t.sent,[b'i'])
     def test_diagnostic_commands_send_only_their_own_opcode(self):
-        for command,opcode,prefix in [('tuner-program-port',b'\x01','PROGRAM probe'),('tuner-program-burst',b'\x09','PROGRAM burst')]:
+        for command,opcode,prefix in [('tuner-program-port',b'\x01','PROGRAM probe'),('tuner-program-burst',b'*','PROGRAM burst')]:
             with self.subTest(command=command),tempfile.TemporaryDirectory() as directory:
                 t=ScriptedTransport(['UART application',prefix+' end status=read-restored-unclassified','UART application'])
                 argv=['uart.py',command,'--port','COM_FAKE','--log',str(pathlib.Path(directory)/'uart.bin')]
@@ -48,5 +48,21 @@ class RecoveryTests(unittest.TestCase):
                     uart.main()
                 self.assertEqual(t.sent,[b'i',opcode,b'i'])
                 self.assertEqual(t.responses,[])
+
+    def test_pin_capture_waits_for_restoration_and_application_response(self):
+        with tempfile.TemporaryDirectory() as directory:
+            t=ScriptedTransport(['UART application','PIN capture end status=captured-restored-unclassified','UART application'])
+            argv=['uart.py','tuner-pin-capture','--port','COM_FAKE','--log',str(pathlib.Path(directory)/'uart.bin')]
+            with mock.patch.object(uart,'Transport',return_value=t),mock.patch.object(sys,'argv',argv),contextlib.redirect_stdout(io.StringIO()):
+                uart.main()
+            self.assertEqual(t.sent,[b'i',b'`',b'i'])
+            self.assertEqual(t.responses,[])
+
+    def test_probe_opcodes_do_not_dispatch_other_commands(self):
+        import re
+        source=(pathlib.Path(__file__).resolve().parents[1]/'src/app.c').read_text()
+        for opcode,call in [("'*'",'tuner_program_burst_probe'),("'`'",'tuner_pin_capture_probe')]:
+            dispatch=re.findall(r'if\(c=='+re.escape(opcode)+r'\)(\w+)\(',source)
+            self.assertEqual(dispatch,[call])
 
 if __name__=='__main__':unittest.main()
