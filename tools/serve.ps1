@@ -1,6 +1,6 @@
 # Loads the application into RAM over UART and has it bring itself up (src/tuner_serve.c):
 # tuner, TS path, Wi-Fi radio and access point. It does NOT start streaming; a client
-# (BonDriver, phone app) selects the channel and starts/stops it over Wi-Fi (docs/protocol.md).
+# (BonDriver, phone app) selects the channel and starts/stops it over Wi-Fi (README.md).
 # A PC is needed here only to load the RAM image; an image built with `make AUTOSERVE=1`
 # and stored in the SPI application area brings itself up without any PC.
 param(

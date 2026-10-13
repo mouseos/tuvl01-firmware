@@ -1,5 +1,5 @@
-﻿/* SPDX-License-Identifier: MIT
- * TUVL01 Wi-Fi protocol, I/O-free part (docs/protocol.md). Portable C99: usable
+/* SPDX-License-Identifier: MIT
+ * TUVL01 Wi-Fi protocol, I/O-free part (README.md). Portable C99: usable
  * unchanged from a BonDriver, an Android NDK/JNI library or any other client. */
 #ifndef TUVL01_PROTO_H
 #define TUVL01_PROTO_H

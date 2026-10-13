@@ -2,7 +2,7 @@
 #ifndef WIFI_CTL_H
 #define WIFI_CTL_H
 #include <stdint.h>
-/* Client-neutral Wi-Fi control service, UDP port 4200 (see docs/protocol.md).
+/* Client-neutral Wi-Fi control service, UDP port 4200 (see README.md).
  * Nothing here is specific to a particular player or operating system. */
 #define WIFI_CTL_PORT 4200
 #define WIFI_CTL_VERSION 1

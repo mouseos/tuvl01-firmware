@@ -25,7 +25,7 @@ def verify(data,manifest):
     return records
 
 def header(data,records):
-    lines=['/* Generated from verified manufacturer data. See firmware/NOTICE.md. */',
+    lines=['/* Generated from verified manufacturer data. */',
            'static const uint8_t pseq_bytes[]={']
     for i in range(0,len(data),16):lines.append('    '+','.join(f'0x{b:02x}' for b in data[i:i+16])+',')
     lines+=['};','static const struct {unsigned offset,count; uint8_t bank;} pseq_records[]={']

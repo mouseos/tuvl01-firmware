@@ -37,7 +37,7 @@ void tuvl01_loss_init(tuvl01_loss *l){
     l->expected=0;l->started=0;l->datagrams=l->missing=l->resyncs=l->reordered=l->invalid=0;
 }
 int tuvl01_loss_update(tuvl01_loss *l,const tuvl01_stream *s){
-    /* A START begins a new stream whose first datagram is sequence 0 / packet index 0 (docs/protocol.md).
+    /* A START begins a new stream whose first datagram is sequence 0 / packet index 0 (README.md).
      * That datagram is never "late" for the previous stream, whatever position it had reached. */
     if(l->started && s->sequence==0 && s->index==0 && l->expected!=0)l->started=0;
     if(l->started){
