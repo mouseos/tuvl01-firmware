@@ -32,7 +32,24 @@ int tuner_read_burst(unsigned bank,unsigned reg,uint8_t *bytes,unsigned count,un
     if(burst_mismatch)bytes[0]^=1;
     return 0;
 }
+int tuner_read_burst_restart(unsigned bank,unsigned reg,uint8_t *bytes,unsigned count,unsigned *received){
+    return tuner_read_burst(bank,reg,bytes,count,received);
+}
 int main(void){
+    /* Failure injection verifies the new read-only diagnostic never writes
+     * the program window and never reports success after a failed read. */
+    unsigned restart_operations=0;
+    for(unsigned fail=0;fail<=restart_operations || fail==0;fail++){
+        memset(registers,0,sizeof registers);registers[0xf3]=0xe0;
+        registers[0xf4]=2;registers[0xf5]=0x98;
+        operations=writes=0;fail_at=fail;output[0]=0;
+        tuner_program_restart_probe();
+        assert(writes==0 && registers[0xf3]==0xe0 && registers[0xf4]==2 && registers[0xf5]==0x98);
+        if(fail==0){
+            restart_operations=operations;
+            assert(strstr(output,"read-state-unchanged-unclassified"));
+        }else assert(!strstr(output,"status=read-state-unchanged-unclassified"));
+    }
     for(unsigned fail=0;fail<=24;fail++){
         memset(registers,0,sizeof registers);registers[0xf3]=0xe0;
         registers[0xf4]=2;registers[0xf5]=0x98;

@@ -40,9 +40,10 @@ class RecoveryTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):t.recovery()
         self.assertEqual(t.sent,[b'i'])
     def test_diagnostic_commands_send_only_their_own_opcode(self):
-        for command,opcode,prefix in [('tuner-program-port',b'\x01','PROGRAM probe'),('tuner-program-burst',b'*','PROGRAM burst'),('tuner-program-release',b'.','PROGRAM release')]:
+        for command,opcode,prefix in [('tuner-program-port',b'\x01','PROGRAM probe'),('tuner-program-burst',b'*','PROGRAM burst'),('tuner-program-release',b'.','PROGRAM release'),('tuner-program-restart',b'\x7f','PROGRAM restart')]:
             with self.subTest(command=command),tempfile.TemporaryDirectory() as directory:
-                t=ScriptedTransport(['UART application',prefix+' end status=read-restored-unclassified','UART application'])
+                outcome='read-state-unchanged-unclassified' if command=='tuner-program-restart' else 'read-restored-unclassified'
+                t=ScriptedTransport(['UART application',prefix+' end status='+outcome,'UART application'])
                 argv=['uart.py',command,'--port','COM_FAKE','--log',str(pathlib.Path(directory)/'uart.bin')]
                 with mock.patch.object(uart,'Transport',return_value=t),mock.patch.object(sys,'argv',argv),contextlib.redirect_stdout(io.StringIO()):
                     uart.main()

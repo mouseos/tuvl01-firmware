@@ -109,19 +109,25 @@ static int burst_wait(unsigned mask,const char *phase){
  * penultimate byte, issue STOP before reading the final byte. One register
  * pointer transaction followed by one read transaction; chip-specific
  * auto-increment/stream semantics are not supplied by this transport. */
-int tuner_read_burst(unsigned address,unsigned reg,uint8_t *bytes,unsigned count,unsigned *received){
+static int read_burst(unsigned address,unsigned reg,uint8_t *bytes,unsigned count,unsigned *received,unsigned restart){
     if(received)*received=0;
     if(address<0x60 || address>0x62 || reg>255 || !bytes || !received || !count || count>8)return -1;
-    if(count==1){
+    if(count==1 && !restart){
         int result=tuner_read_register(address,reg,bytes);
         if(!result)*received=1;
         return result;
     }
+    if(count<2)return -1;
     if(!controller_ready)controller_init();
     failure_phase=0;
     if(start() || send_byte(address<<1,"write-address-NACK") ||
-       send_byte(reg,"register-pointer-NACK") || stop())goto failed;
-    if(start() || send_byte((address<<1)|1,"read-address-NACK"))goto failed;
+       send_byte(reg,"register-pointer-NACK"))goto failed;
+    if(restart){
+        /* Manual 19.3.2: repeat START with BBSY=1/SCP=0 while master
+         * still owns the bus. Do not wait for bus-free as start() does. */
+        I(1)=(I(1)&(uint8_t)~0x40)|0x80;
+    }else if(stop() || start())goto failed;
+    if(send_byte((address<<1)|1,"read-address-NACK"))goto failed;
     /* At most eight bytes; no UART, scheduler delay, or tick-based timeout
      * while interrupts are masked. Exit the critical section on every path. */
     taskENTER_CRITICAL();
@@ -146,6 +152,12 @@ receive_failed:
     taskEXIT_CRITICAL();
 failed:
     return transaction_failure(address,reg);
+}
+int tuner_read_burst(unsigned address,unsigned reg,uint8_t *bytes,unsigned count,unsigned *received){
+    return read_burst(address,reg,bytes,count,received,0);
+}
+int tuner_read_burst_restart(unsigned address,unsigned reg,uint8_t *bytes,unsigned count,unsigned *received){
+    return read_burst(address,reg,bytes,count,received,1);
 }
 static int write_chunk(unsigned address,unsigned reg,const uint8_t *bytes,unsigned count){
     if(address<0x60 || address>0x62 || reg>255 || !bytes || !count || count>128)return -1;

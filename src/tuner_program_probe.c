@@ -2,6 +2,58 @@
 #include "board.h"
 #include "tuner.h"
 
+/* Compare bus framing without changing the program window or its address.
+ * A successful transport is not proof of readable internal sample memory. */
+void tuner_program_restart_probe(void){
+    uint8_t control,high,low,after,single[6],bytes[8];
+    unsigned actual,failed=0;
+    uart_puts("PROGRAM restart start bank=00000061\n");
+    if(tuner_read_register(0x61,0xf3,&control) ||
+       tuner_read_register(0x61,0xf4,&high) || tuner_read_register(0x61,0xf5,&low)){
+        uart_puts("PROGRAM restart end status=i2c-failed-before-read\n");return;
+    }
+    if(control!=0xe0 || high!=2 || low!=0x98){
+        uart_puts("PROGRAM restart end status=unexpected-state\n");return;
+    }
+    for(unsigned n=0;n<6;n++)if(tuner_read_register(0x61,0xd6+n,&single[n])){
+        uart_puts("PROGRAM restart end status=validation-read-failed\n");return;
+    }
+    for(unsigned restart=0;restart<2;restart++){
+        actual=0;
+        for(unsigned n=0;n<8;n++)bytes[n]=0xa5;
+        int result=restart?tuner_read_burst_restart(0x61,0xd6,bytes,6,&actual):
+                           tuner_read_burst(0x61,0xd6,bytes,6,&actual);
+        if(result || actual!=6)failed=1;
+        if(!failed)for(unsigned n=0;n<6;n++)if(bytes[n]!=single[n])failed=1;
+        uart_puts("PROGRAM restart validation mode=");uart_hex(restart);
+        uart_puts(" count=");uart_hex(actual);uart_puts(" bytes=");
+        for(unsigned n=0;n<actual;n++){uart_hex(bytes[n]);uart_puts(" ");}
+        uart_puts(failed?" status=failed\n":" status=verified\n");
+        if(failed)break;
+    }
+    if(!failed)for(unsigned port=0;port<2 && !failed;port++){
+        for(unsigned restart=0;restart<2;restart++){
+            actual=0;
+            for(unsigned n=0;n<8;n++)bytes[n]=0xa5;
+            int result=restart?tuner_read_burst_restart(0x61,0xf6+port,bytes,8,&actual):
+                               tuner_read_burst(0x61,0xf6+port,bytes,8,&actual);
+            uart_puts("PROGRAM restart port=");uart_hex(0xf6+port);
+            uart_puts(" mode=");uart_hex(restart);uart_puts(" count=");uart_hex(actual);
+            uart_puts(" bytes=");
+            for(unsigned n=0;n<actual;n++){uart_hex(bytes[n]);uart_puts(" ");}
+            uart_puts("\n");
+            if(result || actual!=8){failed=1;break;}
+        }
+    }
+    unsigned unchanged=1;
+    if(tuner_read_register(0x61,0xf3,&after) || after!=control)unchanged=0;
+    if(tuner_read_register(0x61,0xf4,&after) || after!=high)unchanged=0;
+    if(tuner_read_register(0x61,0xf5,&after) || after!=low)unchanged=0;
+    uart_puts(!unchanged?"PROGRAM restart end status=state-changed\n":
+              failed?"PROGRAM restart end status=read-failed-state-unchanged\n":
+                     "PROGRAM restart end status=read-state-unchanged-unclassified\n");
+}
+
 /* Finite experiment at the known last PSEQ patch address. E3 is the stock
  * patch-transfer state, E0 the stock released state. Its READ semantics are
  * unknown: these bytes must not be labelled IQ or program memory yet. */

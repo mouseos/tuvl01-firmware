@@ -136,6 +136,18 @@ TUVL01実機では、通常状態E0と転送状態E3のどちらでもF6は最�
 
 現在のメーカー順序による実機比較は3回成功し、要求E0/E3/E2に対して読戻しはE0/E1/E0でした。全段階でF6の単発8回は `2B`、F7は `00` の反復で、連続読出しも隣接レジスタと整合しました。bit1を0として読戻すことは確認できましたが、その意味と、IQまたは内部プログラムメモリを読む経路は未確定です。設定・アドレスの復帰、通常再初期化・選局の `ready` とSPI FIFO応答を確認しました。
 
+### 連続読出しの構造体と反復STARTの比較
+
+[HuaweiのPanasonic MN8855x公開ドライバ](https://github.com/mt7-dev/android_kernel_huawei_mt7l09/blob/28643aa860bda79b6b5909f36621592180fcbbd8/drivers/huawei_platform/tuners/tuner_mn8855x_sys.h)には、通常のARM32 ABIでbank（32ビット）をoffset 0、register（8ビット）を4、buffer pointerを8、length（16ビット）を12に置く16バイトの連続転送構造体があります。CNTSET/CNTGETのioctl `80106403` / `80106404` もi-dio 3.05の参考ライブラリと一致します。構造体とコマンドの対応を示しますが、実際に同じカーネルやチップ版を使用したことは証明しません。
+
+同ドライバのCNTGETは指定長のバッファを確保し、[I2C側](https://github.com/mt7-dev/android_kernel_huawei_mt7l09/blob/28643aa860bda79b6b5909f36621592180fcbbd8/drivers/huawei_platform/tuners/tuner_mn8855x_hw_i2c.c)でレジスタアドレス1バイトの送信と指定長の受信を、1回の `i2c_transfer` に渡します。先頭メッセージにSTOP指定はなく、現在のTUVL01のSTOPを挟む方式と異なります。デバッグ用の条件付きコードは引数と先頭1〜2バイトのログ出力で、IQの信号源や取得開始を設定する処理ではありません。
+
+`python tools/uart.py tuner-program-restart --port COMx --log logs/program-restart.bin`（直接UARTならDEL、`7F`）は、Main1 `F3=E0, F4/F5=0298` の通常状態でSTOPあり／反復STARTの読出しを比較します。最初にD6..DBの6バイトを単発読出しと照合し、一致した場合だけF6/F7起点を各8バイト読みます。レジスタ設定・内部アドレス・パッチデータは変更せず、終了時にF3/F4/F5が変わっていないことを確認します。受信の有限回数ポーリングと実受信数の報告は既存burstと共通です。成功表示 `read-state-unchanged-unclassified` は搬送と設定不変の確認で、内部メモリやIQ取得の成功ではありません。
+
+実機ではRAM診断を3回実行し、STOPあり／反復STARTとも通常レジスタ6バイトが単発読出しと一致しました。両方式ともF6起点の先頭2バイトは `2B 00`、F7起点の先頭は `00` で、方式変更によるF6からの内部プログラム列は得られていません。後続の値は変化しますが、読み取り時刻も異なるため転送方式による差とは断定できません。全3回でF3/F4/F5の不変を確認し、終了後は通常FIFOから128枠・24064バイトを搬出してUART輸送CRC一致とUART応答を確認しました。波形・IQの取得は未確認です。
+
+通常FIFOの128枠すべてにTEI、54枠にadaptation errorがあり、正常TSの基準には使えません。取得長とCRCの一致を受信品質の成功とは区別します。続いて公開用の `tuner-program-restart` からも1回実行し、同じ先頭値・設定不変・終了後のUART応答を確認しました。
+
 ### STM出力選択の意味
 
 HTV31 2.44のメーカー試験アプリ `fullseg_test` は、`cfg_stm` を「Status Terminal Monitoring configuration」と表示します。AArch64の表示処理（ELF `9280..94DC`）にある表とインデックス演算を確認しました。これは試験アプリの説明で、チップの正式な全レジスタ仕様ではありません。
