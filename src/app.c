@@ -268,6 +268,11 @@ void firmware_main(void) {
     board_init();
     uart_puts("TUVL01 independent / FreeRTOS 11.1.0 / GNU SH2A BE\n");
     uart_puts("Application revision=168\n");
+#ifdef TUVL01_AUTOSERVE
+    uart_puts("Build variant=standalone (serves on start)\n");
+#else
+    uart_puts("Build variant=development (waits for UART commands)\n");
+#endif
     wifi_net_service=wifi_ctl_service;
     flash_init(); /* Read-only NOR diagnostics; write routines are not referenced. */
     for (unsigned i=0;i<BOARD_VECTOR_COUNT;i++) vectors[i]=fault;

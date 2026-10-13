@@ -5,6 +5,7 @@ RADIO_FILE ?= firmware/mt5931.bin
 RADIO_SHA256 ?= 06d43badbb669700c7cf94924c43a40779b428f3ceec8756813b0aaec2b4a68d
 KERNEL = third_party/FreeRTOS-Kernel
 CFLAGS = -m2a-nofpu -mb -Os -g -ffreestanding -fno-builtin -fno-common -ffunction-sections -fdata-sections -Wall -Wextra -Werror -Iinclude -Ibuild -Irtos/port -I$(KERNEL)/include
+AUTOSERVE ?= 0
 ifeq ($(AUTOSERVE),1)
 CFLAGS += -DTUVL01_AUTOSERVE=1
 endif
@@ -65,7 +66,11 @@ $(INTEGER_RUNTIME): tools/runtime_libgcc.py
 	TUVL_TOOLCHAIN_DIR=$(abspath $(TOOLCHAIN)/..) python3 tools/runtime_libgcc.py
 build/wpa/rsn-core.o: $(WPA_INPUTS) tools/wpa_build.py
 	python3 tools/wpa_build.py --cc $(CC)
-build/app.elf: $(APP) linker/app.ld $(HEADERS) build/radio-config.h build/tuner_pseq.h $(INTEGER_RUNTIME) build/wpa/rsn-core.o
+# Changing AUTOSERVE must rebuild the application: record the value and depend on it.
+build/autoserve.flag: FORCE
+	mkdir -p build
+	@echo $(AUTOSERVE) | cmp -s - $@ || echo $(AUTOSERVE) > $@
+build/app.elf: $(APP) linker/app.ld $(HEADERS) build/radio-config.h build/tuner_pseq.h $(INTEGER_RUNTIME) build/wpa/rsn-core.o build/autoserve.flag
 	mkdir -p build
 	$(CC) $(CFLAGS) $(LDFLAGS) -T linker/app.ld -Wl,-Map,build/app.map $(APP) build/wpa/rsn-core.o $(INTEGER_RUNTIME) -o $@
 build/app.bin: build/app.elf

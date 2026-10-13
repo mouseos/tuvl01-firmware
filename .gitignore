@@ -11,3 +11,4 @@ toolchain-bootstrap.log
 /analysis/
 core
 core.*
+release/
