@@ -3,13 +3,14 @@
 #include "tuner.h"
 #include "time_counts.h"
 
-/* Passive, finite GPIO observation. No clock or chip-select is driven.
+/* Passive, finite GPIO observation in the two capture probes.
  * GPIO timestamps include software overhead and IRQ/scheduler gaps; this
  * is neither a uniform-rate sampler nor a logic-analyzer replacement. */
 #define SAMPLES 512U
 #define PDCR1 R16(0xfffe386cUL)
 #define PDIOR0 R16(0xfffe3872UL)
 #define PDPR0 R16(0xfffe387aUL)
+#define PDDR0 R16(0xfffe3876UL)
 static uint32_t counts[2][SAMPLES];
 static uint8_t pins[2][SAMPLES];
 static void field(const char *name,unsigned v){uart_puts(name);uart_hex(v);}
@@ -155,4 +156,53 @@ restore:
     if(!restored)uart_puts("PINTST capture end status=restore-failed-inputs-retained\n");
     else if(failed)uart_puts("PINTST capture end status=capture-failed-restored\n");
     else uart_puts("PINTST capture end status=captured-restored-unclassified\n");
+}
+
+/* Validate the port readout with a known pad level. Drive ONLY the established
+ * SPI clock input at the tuner, in normal SPI-slave mode with SSL inactive.
+ * No MN885521 register is written and no chip-select/data output is driven. */
+void tuner_pin_gpio_selftest(void){
+    uint8_t e8,f8,e7,after_e8,after_f8,after_e7,levels[16];
+    unsigned matched=1,chip_ok=0,observed=0;
+    uart_puts("PIN selftest start normal-SPI clock-only\n");
+    if((R32(0xfffe100cUL)&1U) || (R32(0xfffe101cUL)&1U) ||
+       (R8(0xffff8800UL)&0x40U) || PDCR1!=0x2222U || !(PDPR0&0x20U)){
+        uart_puts("PIN selftest end status=refused-mcu-state\n");return;
+    }
+    if(tuner_read_register(0x62,0xe8,&e8) || tuner_read_register(0x62,0xf8,&f8) ||
+       tuner_read_register(0x61,0xe7,&e7)){
+        uart_puts("PIN selftest end status=i2c-failed-before-change\n");return;
+    }
+    if((e8&15U)!=2 || (f8&15U)!=1 || (e7&0x71U)){
+        uart_puts("PIN selftest end status=unexpected-tuner-state\n");return;
+    }
+    uint16_t ior=PDIOR0,dr=PDDR0;
+    /* PD5/6/7 retain the stopped RSPI mux. Set the PD4 GPIO latch low
+     * before connecting its output to the normal-mode slave clock input. */
+    PDDR0&=(uint16_t)~0x10U;PDIOR0|=0x10U;PDCR1&=(uint16_t)~7U;
+    for(unsigned n=0;n<16;n++){
+        if(n&1U)PDDR0|=0x10U;else PDDR0&=(uint16_t)~0x10U;
+        (void)PDDR0;
+        levels[n]=(uint8_t)((PDPR0>>4)&1U);
+        observed=n+1;
+        if(levels[n]!=(n&1U))matched=0;
+        /* SSL must stay inactive throughout; abort if the pad reads low. */
+        if(!(PDPR0&0x20U)){matched=0;break;}
+    }
+    PDCR1=0x2222U;
+    PDIOR0=(uint16_t)((PDIOR0&~0x10U)|(ior&0x10U));
+    PDDR0=(uint16_t)((PDDR0&~0x10U)|(dr&0x10U));
+    if(!tuner_read_register(0x62,0xe8,&after_e8) && after_e8==e8 &&
+       !tuner_read_register(0x62,0xf8,&after_f8) && after_f8==f8 &&
+       !tuner_read_register(0x61,0xe7,&after_e7) && after_e7==e7)chip_ok=1;
+    /* Count stored observations, including an early SSL abort. */
+    for(unsigned n=0;n<observed;n++){
+        field("PIN selftest expected=",n&1U);field(" PD4=",levels[n]);uart_puts("\n");
+    }
+    field("PIN selftest observed=",observed);field(" matched=",matched);field(" chip_unchanged=",chip_ok);uart_puts("\n");
+    if(PDCR1!=0x2222U || (PDIOR0&0x10U)!=(ior&0x10U) || (PDDR0&0x10U)!=(dr&0x10U))
+        uart_puts("PIN selftest end status=restore-failed\n");
+    else if(!chip_ok)uart_puts("PIN selftest end status=chip-state-unconfirmed\n");
+    else if(!matched)uart_puts("PIN selftest end status=readback-mismatch-restored\n");
+    else uart_puts("PIN selftest end status=verified-restored\n");
 }

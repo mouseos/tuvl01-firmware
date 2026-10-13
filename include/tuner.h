@@ -10,6 +10,7 @@ void tuner_program_port_probe(void);
 void tuner_program_burst_probe(void);
 void tuner_pin_capture_probe(void);
 void tuner_pin_test_probe(void);
+void tuner_pin_gpio_selftest(void);
 void tuner_gpio_dump(void);
 void tuner_gpio_drive(void);
 void tuner_gpio_release(void);
