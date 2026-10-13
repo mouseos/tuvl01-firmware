@@ -94,7 +94,7 @@ class Transport:
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
-    command_arg=p.add_argument('command',choices=['upload','resume','run','cycle','save','recover','diag','pins','sdio','wifi','mac','capability','scan','board','ap','apstop','load','audit','wifi-stats','wifi-verbose','wifi-clock','wifi-width','wifi-read-poll','wifi-write-poll','wifi-ts-feedback','wifi-nic-stats','wifi-link','wifi-rate','wifi-poll-reuse','wifi-status-poll','wifi-poll-budget','wifi-irq','wifi-read-check','tuner','tuner-board','tuner-analog','tuner-init','ts-burst','ts-aggregate','ts-probe','ts-output','ts-dma','ts-dma-long','ts-benchmark','ts-clock','ts-clock-max','icache','tuner-monitor','tuner-fec','tuner-quality','tmcc','uhf-base','vlow-base','serve'])
+    command_arg=p.add_argument('command',choices=['upload','resume','run','cycle','save','recover','diag','pins','sdio','wifi','mac','capability','scan','board','ap','apstop','load','audit','wifi-stats','wifi-verbose','wifi-clock','wifi-width','wifi-read-poll','wifi-write-poll','wifi-ts-feedback','wifi-nic-stats','wifi-link','wifi-rate','wifi-poll-reuse','wifi-status-poll','wifi-poll-budget','wifi-irq','wifi-read-check','tuner','tuner-board','tuner-analog','tuner-init','ts-burst','ts-aggregate','ts-probe','ts-output','ts-dma','ts-dma-long','ts-benchmark','ts-clock','ts-clock-max','icache','tuner-monitor','tuner-fec','tuner-quality','tmcc','uhf-base','vlow-base','serve','loader-update'])
     p.add_argument('--port',required=True);p.add_argument('--image',type=pathlib.Path)
     p.add_argument('--log',type=pathlib.Path,required=True)
     p.add_argument('--benchmark-seconds',type=int,
@@ -249,6 +249,20 @@ def main():
                 result=t.wait(lambda s:s.startswith('SERVE end status='),400)
                 print(result)
                 if not result.endswith('=ready'):raise RuntimeError('Bring-up failed; see UART log')
+            if a.command=='loader-update':
+                # Rewrites the 8 KiB boot loader (SPI NOR sectors 0 and 1) from the running application.
+                if not a.image:raise RuntimeError('--image build/boot.bin is required')
+                data=a.image.read_bytes()
+                if len(data)>8192 or b'TUVL01 independent recovery boot' not in data:raise RuntimeError('Not a loader image')
+                data=data.ljust(8192,b'\xff')
+                payload=data+struct.pack('>I',zlib.crc32(data)&0xffffffff)
+                t.write(b'i');t.expect('UART application');t.write(bytes([19]))
+                t.wait(lambda s:s.startswith('LOADER update ready'),10)
+                for i in range(0,len(payload),64):
+                    t.write(payload[i:i+64]);t.wait(lambda s:s=='LOADER ack',10)
+                result=t.wait(lambda s:s.startswith('LOADER update end status='),60)
+                print(result)
+                if not result.endswith('=verified'):raise RuntimeError('Loader update failed: '+result)
             if a.command=='load':t.load()
             if a.command=='audit':t.audit()
             if a.command in ('wifi-stats','wifi-verbose'):

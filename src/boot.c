@@ -180,6 +180,42 @@ static void uart_command(int c) {
     if(c=='l')load();
     if(c=='r' && ready)run();
 }
+/* With no UART byte for a while after power-on, run the application stored in the SPI NOR
+ * (CRC-checked while copying to RAM). Any received byte cancels it and keeps the recovery
+ * loader, so a bad application can always be replaced. The window is measured with the
+ * compare-match timer (Pclk/8, free-running); the RTOS reconfigures it when it starts. */
+#ifndef BOOT_AUTORUN_MS
+#define BOOT_AUTORUN_MS 5000UL
+#endif
+static void autoboot(void) {
+    const uint32_t per_ms=BOARD_PCLK_HZ/8/1000UL;
+    R8(0xfffe0418)&=(uint8_t)~4; /* STBCR7 MSTP72: CMT clock on, as the RTOS port does */
+    (void)R8(0xfffe0418);
+    R16(0xfffec000)&=(uint16_t)~1;
+    R16(0xfffec002)=0;           /* Pclk/8, no interrupt */
+    R16(0xfffec004)=0;R16(0xfffec006)=0xffff;
+    R16(0xfffec000)|=1;
+    uart_puts("AUTOBOOT: send any byte within the window to stay in recovery\n");
+    uint32_t elapsed=0,last=R16(0xfffec004);
+    while(elapsed<BOOT_AUTORUN_MS*per_ms){
+        if(uart_getc()>=0){uart_puts("AUTOBOOT cancelled\n");return;}
+        uint32_t now=R16(0xfffec004);
+        elapsed+=(now-last)&0xffffU;   /* counter wraps at 16 bits; polled far faster than a wrap */
+        last=now;
+    }
+    load();
+    if(!loaded){uart_puts("AUTOBOOT no valid application in SPI\n");return;}
+    while(update_state){
+        if(uart_getc()>=0){
+            update_state=0;ready=loaded=written=0;status=ERR_ORDER;
+            uart_puts("AUTOBOOT cancelled\n");return;
+        }
+        update_poll();
+    }
+    if(!ready){uart_puts("AUTOBOOT application CRC failed\n");return;}
+    uart_puts("AUTOBOOT run\n");
+    run();
+}
 void firmware_main(void) {
     board_init();
     /* Manual 32.2.14: the first 128 KiB also requires SYSCR5 RRAMWE.
@@ -196,6 +232,7 @@ void firmware_main(void) {
     uart_puts(" after=");uart_hex(retention_write_after);uart_puts("\n");
     flash_init();uart_puts("NOR JEDEC=");uart_hex(flash_id());uart_puts("\n");
     usb_init();
+    autoboot();
     for(;;){
         usb_poll();update_poll();
         int c=uart_getc();

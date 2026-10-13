@@ -12,4 +12,7 @@ uint32_t flash_id(void);
 int flash_status(void);
 int flash_erase(uint32_t a);
 int flash_program(uint32_t a,const void *data,uint32_t n);
+/* Loader area only (a < APP_FLASH); see src/loader_update.c. */
+int flash_boot_erase(uint32_t a);
+int flash_boot_program(uint32_t a,const void *data,uint32_t n);
 #endif

@@ -57,6 +57,20 @@ int flash_erase(uint32_t a) {
     if(address(0x20,a))return -1;
     end();return 0;
 }
+/* Loader area [0,APP_FLASH): reachable only from the explicit application command
+ * "loader update" (src/loader_update.c). The ordinary calls above still refuse it. */
+int flash_boot_erase(uint32_t a) {
+    if(a>=APP_FLASH || (a&4095) || flash_id()!=0x014017 || wren()) return -1;
+    if(address(0x20,a))return -1;
+    end();return 0;
+}
+int flash_boot_program(uint32_t a,const void *data,uint32_t n) {
+    if(!n || n>256 || a>=APP_FLASH || n>APP_FLASH-a || (a&255)+n>256 || wren())return -1;
+    if(address(2,a))return -1;
+    const uint8_t *p=data;
+    while(n--) if(byte(*p++)<0){end();return -1;}
+    end();return 0;
+}
 int flash_program(uint32_t a,const void *data,uint32_t n) {
     if(!n || n>256 || a<APP_FLASH || a>=APP_FLASH+APP_CAPACITY+4096 || n>APP_FLASH+APP_CAPACITY+4096-a || (a&255)+n>256 || wren())return -1;
     if(address(2,a))return -1;
