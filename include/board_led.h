@@ -11,11 +11,11 @@ int board_led_init(void);
 /* Drives one LED (0 or 1) now and stops the automatic pattern until board_led_auto(). */
 void board_led_set(unsigned led,unsigned on);
 void board_led_auto(void);
-/* Pattern for a state: BUSY led1 solid; READY led0 solid (led1 blinks while streaming);
- * FAILED both blink fast; OFF dark. */
+/* Pattern for a state: BUSY led1 (red) solid; READY led0 (green) solid when a client is
+ * connected and slow blinking when none is; FAILED both blink fast; OFF dark. */
 void board_led_state(unsigned state);
-/* Call from the UART task loop. now is in ms ticks. */
-void board_led_service(unsigned now,int streaming);
+/* Call from the UART task loop. now is in ms ticks; connected = a client is talking to the device. */
+void board_led_service(unsigned now,int connected);
 /* UART byte 10: argument byte bit0 = LED0, bit1 = LED1, 0xff = back to automatic. */
 void board_led_command(void);
 #endif

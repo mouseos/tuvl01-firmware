@@ -38,12 +38,14 @@ void board_led_set(unsigned led,unsigned on){
 }
 void board_led_auto(void){manual=0;applied=~0U;}
 void board_led_state(unsigned state){state_now=state;}
-void board_led_service(unsigned now,int streaming){
+void board_led_service(unsigned now,int connected){
     if(manual || strap<0)return;
-    unsigned slow=(now/250U)&1U,fast=(now/100U)&1U,pattern=0;
+    unsigned slow=(now/500U)&1U,fast=(now/100U)&1U,pattern=0;
     switch(state_now){
     case BOARD_LED_BUSY:pattern=2;break;
-    case BOARD_LED_READY:pattern=1U|((streaming && slow)?2U:0U);break;
+    /* Ready and connected (including while receiving): green steady. Ready but nobody is
+     * connected: green blinks slowly, so a blinking LED means "up, waiting for a client". */
+    case BOARD_LED_READY:pattern=(connected || slow)?1U:0U;break;
     case BOARD_LED_FAILED:pattern=fast?3U:0U;break;
     default:pattern=0;
     }

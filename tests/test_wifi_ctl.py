@@ -1,4 +1,4 @@
-﻿"""Wi-Fi control service (UDP 4200): protocol, stream ownership and client watchdog."""
+"""Wi-Fi control service (UDP 4200): protocol, stream ownership and client watchdog."""
 import ctypes,pathlib,struct,subprocess,tempfile,unittest
 from test_wifi_net import MAC,PEER,CLIENT,SERVER,ip,udp,checksum
 ROOT=pathlib.Path(__file__).resolve().parents[1]
@@ -101,6 +101,13 @@ class Control(unittest.TestCase):
         self.assertEqual(self.status()[3],0)
     def test_tune_cancels_a_queued_start(self):
         self.send(request(2));self.tune(20);self.assertEqual(self.c.wifi_ctl_poll(1,5000),-1)
+    def test_client_alive_follows_control_traffic_with_a_window(self):
+        alive=self.c.wifi_ctl_client_alive;alive.restype=ctypes.c_int;alive.argtypes=[ctypes.c_uint,ctypes.c_uint]
+        self.assertEqual(alive(100,5000),0)                      # nobody has ever talked to the device
+        self.send(request(5));self.c.wifi_ctl_poll(1000,5000)    # keepalive noticed by the UART task
+        self.assertEqual(alive(1000,5000),1);self.assertEqual(alive(5999,5000),1)
+        self.assertEqual(alive(6001,5000),0)                     # silent for more than the window
+        self.send(b'K',4201);self.assertEqual(alive(9000,5000),1)  # echo traffic counts as well
     def test_without_service_registered_port_4200_is_ignored(self):
         self.c.teardown();self.assertEqual(self.send(request(1)),b'')
 if __name__=='__main__':unittest.main()

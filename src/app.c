@@ -205,7 +205,10 @@ static void usb_task(void *p) {
         sdio_wifi_poll();
         sdio_wifi_tx_bench_poll();
         tuner_ts_stream_wifi_ticks((TickType_t)(xTaskGetTickCount()-poll_begin));
-        board_led_service(xTaskGetTickCount(),tuner_ts_stream_active());
+        {
+            TickType_t led_now=xTaskGetTickCount();
+            board_led_service(led_now,tuner_ts_stream_active() || wifi_ctl_client_alive(led_now,pdMS_TO_TICKS(5000)));
+        }
         sdio_wifi_service_mark(2);
         int stream_progress=tuner_ts_stream_poll();
         tuner_quality_watch_poll();

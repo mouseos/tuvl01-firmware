@@ -57,6 +57,11 @@ void wifi_ctl_tune_done(int ok){
 }
 void wifi_ctl_set_lock(unsigned value){lock=value;}
 int wifi_ctl_client_seen(void){return controlled;}
+int wifi_ctl_client_alive(unsigned now,unsigned window){
+    /* last_change is refreshed by wifi_ctl_poll() whenever a 4200/4201 datagram arrived. */
+    if(activity!=seen_activity)return 1;
+    return controlled && (unsigned)(now-last_change)<=window;
+}
 int wifi_ctl_poll(unsigned now,unsigned timeout){
     int c=pending;
     if(c>=0){pending=-1;return c;}

@@ -56,15 +56,18 @@ class Led(unittest.TestCase):
             self.assertEqual(self.sim[0x36]&0xc0,before)
     def test_state_patterns(self):
         c=self.load();self.set_strap(2);c.board_led_init()
-        def lit(now,streaming=0):
-            c.board_led_service(now,streaming);v=self.reg8(0xfffe3897)&3;return (not v&1,not v&2)
-        c.board_led_state(1);self.assertEqual(lit(0),(False,True))                 # busy: LED1 solid
-        c.board_led_state(2);self.assertEqual(lit(0),(True,False))                 # ready: LED0 solid
-        self.assertEqual(lit(0,1),(True,False));self.assertEqual(lit(300,1),(True,True))  # streaming: LED1 blinks
+        def lit(now,connected=0):
+            c.board_led_service(now,connected);v=self.reg8(0xfffe3897)&3;return (not v&1,not v&2)
+        c.board_led_state(1);self.assertEqual(lit(0),(False,True))                 # busy: red solid
+        c.board_led_state(2)
+        # ready, nobody connected: green blinks slowly (500 ms phases), red never lights
+        self.assertEqual([lit(t) for t in (0,499,500,999,1000)],[(False,False),(False,False),(True,False),(True,False),(False,False)])
+        # ready and connected (also while receiving): green steady at every phase, red never lights
+        self.assertEqual([lit(t,1) for t in (0,250,500,750,1000)],[(True,False)]*5)
         c.board_led_state(3);self.assertEqual(lit(0),(False,False));self.assertEqual(lit(150),(True,True))
         c.board_led_state(0);self.assertEqual(lit(0),(False,False))
     def test_manual_control_pauses_the_pattern_until_auto(self):
         c=self.load();self.set_strap(2);c.board_led_init();c.board_led_state(2)
         c.board_led_set(1,1);c.board_led_service(0,0);self.assertEqual(self.reg8(0xfffe3897)&3,1+0)  # LED0 stays dark: manual
-        c.board_led_auto();c.board_led_service(0,0);self.assertEqual(self.reg8(0xfffe3897)&3,2)
+        c.board_led_auto();c.board_led_service(0,1);self.assertEqual(self.reg8(0xfffe3897)&3,2)   # connected: green
 if __name__=='__main__':unittest.main()

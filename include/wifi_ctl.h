@@ -26,6 +26,10 @@ void wifi_ctl_tune_done(int ok);
 /* Nonzero once a control client has ever contacted the device (the tuner is then
  * known to be initialized, so background lock polling is safe). */
 int wifi_ctl_client_seen(void);
+/* Nonzero while a control client is talking to the device: a 4200/4201 datagram arrived within
+ * `window` ticks of `now`. Used for the "connected" LED; Wi-Fi association is not enough because
+ * a station that leaves is not noticed. */
+int wifi_ctl_client_alive(unsigned now,unsigned window);
 /* Broadcast lock as last observed: 0 unlocked, 1 locked, 255 unknown. */
 void wifi_ctl_set_lock(unsigned lock);
 #endif
