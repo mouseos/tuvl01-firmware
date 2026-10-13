@@ -1,158 +1,118 @@
 # TUVL01 firmware
 
-日本アンテナのi-dio Wi-Fiチューナー TUVL01（Renesas SH726A）に、標準ファームの代わりに入れるファームウェア。電源を入れると、UHFのフルセグとワンセグをWi-Fiで送るチューナーとして立ち上がる。PC側に要るのはTVTest用のBonDriver 1本だけ。
+日本アンテナのi-dio Wi-Fiチューナー（TUVL01）を、地上デジタル放送（UHF 13〜52ch / フルセグ・ワンセグ）のWi-Fi受信用チューナー化するカスタムファームウェアです。
+起動するとWi-Fi APが立ち上がり、TVTest等から選局・TSストリーム受信が行えます。
 
-MCU側のCソース、startup、FreeRTOS Kernel、ドライバはすべてソースからビルドする。例外はMT5931のradio firmwareとMN885521のPSEQデータで、標準ファームから取り出したバイナリを`firmware/`に置いてある。
+## 特徴・仕様
 
-## 動作
+- **完全スタンドアロン起動**: 電源投入後約25秒でAP（SSID: `TUVL01` / 暗号化なし）が自動起動。PC接続やUART操作は不要です。
+- **フルセグ / ワンセグ対応**: フルセグ転送レート約17Mbps。
+- **BonDriver同梱**: TVTest専用の `BonDriver_TUVL01.dll` からWi-Fi経由でチャンネルスキャン・選局・ストリーム制御可能。
+- **プレーヤー非依存**: 独自UDPプロトコル（TTS1 / TCT1）を採用し、クライアント用C言語実装を `client/` に収録。他OSやスマホアプリへの移植も容易です。
+- ※スクランブル放送の視聴・復号には別途B-CAS環境が必要です。
 
-- 電源を入れて約25秒でAP（SSID `TUVL01`、パスワードなし）が上がる。PCもUARTも要らない。
-- UHF 13〜52chを選局できる。フルセグは約17 Mbps出る。
-- チャンネルスキャン、選局、受信の開始と停止は、BonDriverがWi-Fi越しにやる。
-- 通信仕様は特定のプレーヤーに依存しない。標準Cのクライアントを`client/`に置いたので、スマホへ移すときはそれを使う。
-- スクランブルされた放送を見るには、視聴側にB-CASなどの環境が別に要る。
+### LEDインジケータ
+- **赤点灯**: 起動処理中
+- **緑点滅（遅）**: 起動完了・待機中（クライアント未接続）
+- **緑点灯**: クライアント接続中（ストリーム受信中含む）
+- **赤緑高速点滅**: 起動・動作エラー
 
-LEDで状態が分かる。
+## 導入手順（SPI書き換え）
 
-- 赤が点灯: 起動中
-- 緑がゆっくり点滅: 起動済みで、クライアントがつながっていない
-- 緑が点灯: クライアントが接続している（受信中も同じ）
-- 赤と緑が速く点滅: 失敗
+基板上のSPI NORフラッシュ（S25FL164K / 8MiB）をプログラマ等で直接書き換えます。分解が必要です。
 
-## 書き込み
+1. **バックアップ取得**: 作業前に元のフラッシュ内容を必ずバックアップしてください（ベリファイ推奨）。
+2. **書き込みイメージの準備**:
+   - リリースの `tuvl01-spi-8MiB.bin` を使用（`SHA256SUMS.txt` でハッシュ確認）。
+   - または下記ビルド手順で独自ビルド。
+3. **ROM焼き**: `tuvl01-spi-8MiB.bin` をフラッシュ全体（8MiB）に書き込み、ベリファイを実施。
+4. **起動確認**: 基板を戻して電源投入。約25秒後にLEDが緑点滅になり、SSID `TUVL01` が見えれば成功です。
 
-SPIプログラマでS25FL164K（8MiB）に書く。ケースを開ける必要がある。
+※純正ファームに戻す場合は、事前に退避したダンプを書き戻してください。
 
-1. 先に元のSPIを全部読み出して保管する。2回読んで一致を確かめること。標準ファームへ戻すときに使う。
-2. 書き込むイメージを用意する。リリースの`tuvl01-spi-8MiB.bin`を`SHA256SUMS.txt`と照合して使うか、自分でビルドする。
+## TVTestでの利用手順
 
-   ```sh
-   python3 tools/build_release.py --out release                 # firmware/ のデータを使う
-   python3 tools/build_release.py 元ダンプ.BIN --out release    # 自分の機体のダンプから取り出して使う
-   ```
+1. PCのWi-Fiを `TUVL01` に接続（DHCPで `192.168.74.2` が割り当てられます）。
+2. `BonDriver_TUVL01.dll` をTVTestフォルダに配置。
+3. `TVTest.exe /d BonDriver_TUVL01.dll` を起動し、チャンネルスキャンを実行。
+   - チューニング空間: `UHF`（フルセグ） / `UHF (1seg)`（ワンセグ）
+4. ※WindowsファイアウォールでTVTestのUDPポート4202受信が許可されている必要があります。
 
-   `firmware/`のデータはSHA-256を検査し、合わなければ止まる。単独起動版をビルドしたあと、loaderとapplicationの位置とCRC、単独起動版であることを確かめてから`release/tuvl01-spi-8MiB.bin`を出す。
-3. `tuvl01-spi-8MiB.bin`をチップ全体に書き、読み戻して一致を確かめる。
-4. 組み立てて電源を入れる。約25秒でAPが上がる。
+## ビルド方法
 
-標準ファームのSPIで中身があるのは、先頭8KiBのloaderと、`0x40000`以降の標準アプリだけだった。8MiB全体を置き換えると標準アプリは消える。戻すときは、保管した元ダンプを書き戻す。
-
-元ダンプからデータだけ取り出すこともできる。版の違うダンプはSHA-256が合わず、拒否される。
-
-```sh
-python3 tools/extract_vendor.py 元ダンプ.BIN
-```
-
-## TVTestで見る
-
-1. PCのWi-Fiを`TUVL01`につなぐ。DHCPで`192.168.74.2`になる。
-2. `BonDriver_TUVL01.dll`をTVTestのフォルダに置く。リリースに入っている。自分でビルドするなら`client/bondriver/build.ps1`を使う（LLVMだけで足りる。MSVCは要らない）。
-3. `TVTest.exe /d BonDriver_TUVL01.dll`で起動して、チャンネルスキャンをかける。チャンネル空間はフルセグの`UHF`とワンセグの`UHF (1seg)`の2つ。
-
-PCのファイアウォールで、`TVTest.exe`のUDP 4202の受信を許可しておく。
-
-BonDriverの信号レベルは、ロックしているかどうかと受信レートしか反映しない。受信品質を較正した値は持っていない。
-
-## ビルド
-
-Ubuntu 24.04かWSLのUbuntuで実行する。
+Ubuntu 24.04 または WSL2（Ubuntu）環境でビルドします。
 
 ```sh
 sudo apt-get install build-essential binutils-sh-elf libgmp-dev libmpfr-dev libmpc-dev python3 git
 git clone --recurse-submodules https://github.com/mouseos/tuvl01-firmware.git
 cd tuvl01-firmware
 python3 tools/bootstrap.py
-make                                  # 開発版。build/app.img をUARTで転送する
-make AUTOSERVE=1                      # 単独起動版（普通は tools/build_release.py を使う）
-python3 -m unittest discover -s tests -v
+python3 tools/build_release.py --out release
 ```
 
-出力は3つ。`build/boot.bin`は先頭8KiBのloader、`build/app.img`は32Bのヘッダが付いたapplication、`build/initial-spi.bin`は8MiBの初回書き込み用イメージ。
+`release/` ディレクトリに以下のファイルが生成されます：
+- `tuvl01-spi-8MiB.bin`: SPI書込用フルイメージ
+- `SHA256SUMS.txt`: ハッシュリスト
+- `BonDriver_TUVL01.dll`: TVTest用BonDriver（ビルド済みの場合）
 
-SPIの配置は、loaderが`0x0`〜`0x2000`、applicationが`0x10000`以降。applicationのload先とentryは`0x1c000000`で、payloadは`0xfc000`Bまで。
+※開発・デバッグ用イメージ（UART制御前提）をビルドする場合は単に `make` を実行してください。
 
-loaderは電源投入から5秒間、UARTの受信を待つ。何も来なければ、SPI上のapplicationをCRCで検査して実行する。1バイトでも受信したら待機に残るので、壊れたapplicationも入れ替えられる。
+## 通信仕様（Wi-Fi UDP）
 
-## 通信仕様（Wi-Fi）
-
-TVTest、スマホなど、どのクライアントからでも使える。数値はすべてビッグエンディアン。
-
-| 項目 | 値 |
+| 項目 | 設定値 |
 | --- | --- |
-| AP | open SSID `TUVL01`、2.4GHz、クライアントは1台だけ |
-| 装置のIP | `192.168.74.1`（DHCPで、クライアントに`192.168.74.2`を渡す） |
-| 制御 | UDP `192.168.74.1:4200`（要求と応答） |
-| 生存確認とエコー | UDP `192.168.74.1:4201`（受け取った内容を返す） |
-| ストリーム | UDP 装置の`:4202`からクライアントの`192.168.74.2:4202`へ。クライアントがbindして受ける |
+| AP設定 | SSID: `TUVL01` / 2.4GHz / 認証なし / 1クライアント |
+| IP割当 | デバイス: `192.168.74.1` / クライアント: `192.168.74.2` (DHCP) |
+| 制御ポート | UDP `192.168.74.1:4200`（コマンド / レスポンス） |
+| キープアライブ / エコー | UDP `192.168.74.1:4201` |
+| TSストリーム | UDP `192.168.74.1:4202` → `192.168.74.2:4202` |
 
-### ストリーム（TTS1）
+### ストリームフォーマット（TTS1）
+各UDPパケットは16バイトヘッダ + 188バイトTSパケット（1〜7個）で構成されます。ビッグエンディアン。
 
-1データグラムは、16バイトのヘッダと、188バイトのTSパケット1〜7個。
+- `0x00` (4B): マジック `TTS1`
+- `0x04` (4B): パケットシーケンス番号（STARTごとに0リセット、1ずつ加算）
+- `0x08` (4B): TSパケット通し番号（STARTごとに0リセット）
+- `0x0C` (4B): フラグ（bit0: FIFO再同期フラグ）
+- `0x10`〜: TSデータ本体（188 * n バイト）
 
-| オフセット | 長さ | 内容 |
-| --- | --- | --- |
-| 0 | 4 | `TTS1` |
-| 4 | 4 | シーケンス番号（データグラムごとに+1、32bitで巻く） |
-| 8 | 4 | 先頭TSパケットの通し番号 |
-| 12 | 4 | フラグ。bit0は装置FIFOの再同期 |
-| 16 | 188×n | TSパケット |
+※ストリーム開始（START）ごとにシーケンス番号は0に初期化されます。受信側でパケット破棄判定を行う際はストリーム境界（seq=0, index=0）を考慮してください。
 
-欠落はシーケンス番号の飛びで分かる。
+### コントロールコマンド（TCT1）
+UDPポート4200宛てに送信。ヘッダは `TCT1` (4B) + コマンド (1B) + 予約 (1B) + 要求ID (2B) + パラメータ。
+応答はコマンドの最上位ビット（0x80）が立ち、5バイト目にステータスコード（0: 成功）が格納されます。
 
-`START`のたびに新しいストリームが始まり、シーケンス番号も通し番号も0から数え直す。前のストリームの位置を覚えたままだと、新しい番号が小さく見えて遅延パケットとして捨てられ、選局し直した後のデータが1つも届かなくなる。シーケンス0かつ通し番号0のデータグラムは、新しいストリームの先頭として受け入れること。
+- **HELLO (0x01)**: バージョン・機能ビット等の照会
+- **START (0x02)**: ストリーム送信開始
+- **STOP (0x03)**: ストリーム送信停止
+- **STATUS (0x04)**: 現在のステータス取得（選局ch、ロック状態等）
+- **KEEPALIVE (0x05)**: セッション維持（5秒無通信で自動停止）
+- **TUNE (0x06)**: 選局要求（ch: 13〜52 / mode: 0=フルセグ, 1=ワンセグ）
 
-### 制御（UDP 4200）
+## UARTインターフェース（開発・リカバリ用）
 
-要求は8バイトのヘッダに、操作ごとのペイロードが続く。ヘッダは`TCT1`(4B)、操作コード(1B)、0(1B)、要求ID(2B)。応答も同じ形で、操作コードに`0x80`が立ち、オフセット5が状態になる（`0`成功、`1`要求不正、`2`未対応）。
-
-| 操作 | コード | 要求ペイロード | 応答ペイロード |
-| --- | --- | --- | --- |
-| HELLO | 1 | なし | プロトコル版u8、revision u16、機能ビットu32、ストリームポートu16、状態u8、最初のチャンネルu8、最後のチャンネルu8 |
-| START | 2 | なし | 状態u8 |
-| STOP | 3 | なし | 状態u8 |
-| STATUS | 4 | なし | 状態u8、チャンネルu16（0は未選局）、モードu8、選局状態u8、ロックu8 |
-| KEEPALIVE | 5 | なし | 状態u8 |
-| TUNE | 6 | チャンネルu8（13〜52）、モードu8（0=フルセグ、1=ワンセグ） | 選局状態u8 |
-
-各値の意味:
-
-- ストリームの状態は`0`が停止、`1`が送信中、`2`が開始要求の受理済み。機能ビットはbit0がSTART/STOP、bit1がTUNE。
-- 選局状態は`0`未実施、`1`選局中、`2`完了、`3`失敗。ロックは`0`が非ロック、`1`がロック、`255`が不明で、約1秒ごとに更新される。
-
-使い方:
-
-- `TUNE`は、動いているストリームを止めてから選局する。STATUSの選局状態が`2`になり、チャンネルとモードが要求どおりになるまで待って、`START`を送る。ロック待ちを含めて、選局は普通1秒前後、長くて5秒ほどかかる。
-- 選局が終わっても、放送を受信できたとは限らない。受信できているかはSTATUSのロックで見る。
-- 制御で始めたストリームは、クライアントから4200か4201宛てのデータグラムが5秒来ないと、装置が自動で止める。`KEEPALIVE`を1秒間隔くらいで送るか、下の4201パケットで間に合わせる。UARTで始めたストリームは自動では止まらない。
-- PCのWi-Fiアダプタが省電力に入ると欠落が出ることがある。ストリーム中に4201へ短いデータグラムを10ms間隔くらいで送ると減る。
-
-## 開発（UART）
-
-115200bps、8N1。UARTアダプタは基板と電圧とGNDを合わせ、TxDとRxDを交差させてつなぐ。
+ボーレート: 115200bps / 8N1（3.3V TTL、Tx/Rx交差接続）
 
 ```powershell
 python -m venv .venv
-.venv\Scripts\python -m pip install -r tools\requirements.txt
-tools\serve.ps1 -Port COMx           # RAMに転送して起動する（開発版）。PCツールは tools/uart.py（--help）
+.\.venv\Scripts\python -m pip install -r tools\requirements.txt
 ```
 
-本ファームのloaderが入っている機体では、UARTでapplicationを入れ替えられる。
-
+ファームウェア更新（ブートローダ起動中）:
 ```powershell
 python tools/uart.py recover --port COMx --log logs/update.bin
 python tools/uart.py upload --port COMx --image build/app.img --log logs/update.bin
 python tools/uart.py save --port COMx --log logs/update.bin
 ```
 
+電源投入後5秒以内にUART入力を検知した場合、自動起動をキャンセルしてリカバリ待機状態を維持します。
+
 ## ライセンス
 
-独立MCU実装とPCツールはMIT（`LICENSE`）。
+本プロジェクトのオリジナルコードおよびツール類は MIT ライセンスです。
+詳細は `LICENSE` を参照してください。
 
-| 対象 | ライセンス |
-| --- | --- |
-| FreeRTOS Kernel V11.1.0 | MIT |
-| wpa_supplicant 2.12（RSN部分） | BSD-3-Clause（`third_party/wpa_supplicant/COPYING`） |
-| nanoprintf | 0BSD |
-| GCC 13.3.0、GNU binutils（ビルド時のみ） | GPL（整数runtimeはGCC Runtime Library Exception） |
-| pyserial、PyUSB、libusb-package（PC側のみ） | BSD-3-Clause、Apache-2.0、LGPL-2.1-or-later |
-| `firmware/`のMT5931とMN885521のデータ | メーカーのデータ。MITの対象外 |
+- FreeRTOS Kernel: MIT
+- wpa_supplicant (一部): BSD-3-Clause
+- nanoprintf: 0BSD
+- `firmware/` 配下のバイナリ（MT5931 radio firmware, MN885521 PSEQ）はハードウェア固有のファームウェアデータです（MIT対象外）。
