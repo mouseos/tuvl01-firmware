@@ -60,6 +60,8 @@ def main():
     parser.add_argument('--port', required=True)
     parser.add_argument('--log', type=pathlib.Path, required=True)
     parser.add_argument('--output-dir', type=pathlib.Path, required=True)
+    parser.add_argument('--reinitialize', action='store_true',
+                        help='Run normal SERVE initialization/default channel before taking snapshots')
     args = parser.parse_args()
     args.log.parent.mkdir(parents=True, exist_ok=True)
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -73,6 +75,14 @@ def main():
         try:
             t.write(b'i')
             t.expect('UART application')
+            if args.reinitialize:
+                report['initialization'] = 'requested'
+                t.write(bytes([16]))
+                report['initialization'] = t.wait(lambda s: s.startswith('SERVE end status='), 55)
+                if report['initialization'] != 'SERVE end status=ready':
+                    raise RuntimeError('Normal initialization failed')
+                # Snapshot the resulting normal state, not the state before initialization.
+                # SERVE ready alone does not establish valid broadcast TS reception.
             keys = [(0x61, 0xe7), (0x61, 8), (0x61, 0xed), (0x61, 0x97),
                     (0x61, 0xf3), (0x62, 0xe8), (0x62, 0xf8)]
             original = {key: register(t, *key) for key in keys}
