@@ -191,6 +191,7 @@ static void usb_task(void *p) {
         if(c=='*')tuner_program_burst_probe();
         if(c=='.')tuner_program_release_probe();
         if(c==127)tuner_program_restart_probe();
+        if(c==128)tuner_program_address_probe();
         if(c=='`')tuner_pin_capture_probe();
         if(c=='-')tuner_pin_test_probe();
         if(c==',')tuner_pin_gpio_selftest();

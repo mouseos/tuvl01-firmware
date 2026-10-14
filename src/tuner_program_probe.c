@@ -2,6 +2,63 @@
 #include "board.h"
 #include "tuner.h"
 
+/* Address-dependence experiment, not an established memory reader. Only
+ * known Main1 patch-space addresses are selected; no F6 payload/reset writes.
+ * E3 is the stock transfer state. Always attempt all restoration writes,
+ * including when a failed transaction may already have reached the chip. */
+void tuner_program_address_probe(void){
+    static const unsigned addresses[]={0,1,0x100,0x101,0x298,0x299};
+    uint8_t control,high,low,value,bytes[2];
+    unsigned failed=0,changed=0;
+    uart_puts("PROGRAM address start bank=00000061\n");
+    if(tuner_read_register(0x61,0xf3,&control) ||
+       tuner_read_register(0x61,0xf4,&high) || tuner_read_register(0x61,0xf5,&low)){
+        uart_puts("PROGRAM address end status=i2c-failed-before-change\n");return;
+    }
+    if(control!=0xe0 || high!=2 || low!=0x98){
+        uart_puts("PROGRAM address end status=unexpected-state\n");return;
+    }
+    for(unsigned mode=0;mode<2 && !failed;mode++){
+        changed=1;
+        if(tuner_write_register(0x61,0xf3,mode?0xe3:0xe0)) {failed=1;break;}
+        if(tuner_read_register(0x61,0xf3,&value) ||
+           (mode?(value!=0xe3 && value!=0xe1):value!=control)){failed=1;break;}
+        for(unsigned a=0;a<sizeof addresses/sizeof addresses[0] && !failed;a++){
+            unsigned address=addresses[a];
+            if(tuner_write_register(0x61,0xf4,address>>8) ||
+               tuner_write_register(0x61,0xf5,address&255) ||
+               tuner_read_register(0x61,0xf4,&value) || value!=(address>>8) ||
+               tuner_read_register(0x61,0xf5,&value) || value!=(address&255)){
+                failed=1;break;
+            }
+            uart_puts("PROGRAM address mode=");uart_hex(mode?0xe3:0xe0);
+            uart_puts(" address=");uart_hex(address);uart_puts(" singles=");
+            for(unsigned port=0;port<2 && !failed;port++)for(unsigned n=0;n<4;n++){
+                if(tuner_read_register(0x61,0xf6+port,&value)){failed=1;break;}
+                uart_hex(value);uart_puts(" ");
+            }
+            unsigned actual=0;
+            if(!failed && (tuner_read_burst_restart(0x61,0xf6,bytes,2,&actual) || actual!=2))failed=1;
+            uart_puts(" restart=");
+            for(unsigned n=0;n<actual && n<2;n++){uart_hex(bytes[n]);uart_puts(" ");}
+            uart_puts("\n");
+        }
+    }
+    unsigned restored=1;
+    if(changed){
+        if(tuner_write_register(0x61,0xf3,0xe3))restored=0;
+        if(tuner_write_register(0x61,0xf4,high))restored=0;
+        if(tuner_write_register(0x61,0xf5,low))restored=0;
+        if(tuner_write_register(0x61,0xf3,control))restored=0;
+    }
+    if(tuner_read_register(0x61,0xf3,&value) || value!=control)restored=0;
+    if(tuner_read_register(0x61,0xf4,&value) || value!=high)restored=0;
+    if(tuner_read_register(0x61,0xf5,&value) || value!=low)restored=0;
+    uart_puts(!restored?"PROGRAM address end status=restore-failed\n":
+              failed?"PROGRAM address end status=read-failed-restored\n":
+                     "PROGRAM address end status=read-restored-unclassified\n");
+}
+
 /* Compare bus framing without changing the program window or its address.
  * A successful transport is not proof of readable internal sample memory. */
 void tuner_program_restart_probe(void){
