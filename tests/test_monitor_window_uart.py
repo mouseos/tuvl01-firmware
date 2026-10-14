@@ -17,6 +17,39 @@ class Fake:
         assert predicate(s);return s
 
 class MonitorWindowUART(unittest.TestCase):
+    def test_missing_start_reply_is_reported_and_recovers(self):
+        t=Fake('unused');r={}
+        def expect(line):
+            if line=='MONWIN probe start':raise TimeoutError('start missing')
+            return line
+        with mock.patch.object(t,'expect',side_effect=expect), mock.patch.object(m,'capture',return_value=(b'',{'frames':0})):
+            with self.assertRaisesRegex(TimeoutError,'start missing'):
+                m.probe(t,pathlib.Path('unused'),r,timing=True)
+        self.assertNotIn('probe_started',r)
+        self.assertEqual(r['probe_error'],'start missing')
+        self.assertTrue(r['uart_responding'])
+        self.assertEqual(t.ready,2)
+    def test_probe_error_is_retained_when_capture_also_fails(self):
+        t=Fake(TimeoutError('probe timeout'));r={}
+        with mock.patch.object(m,'capture',side_effect=RuntimeError('capture failure')):
+            with self.assertRaisesRegex(RuntimeError,'capture failure'):
+                m.probe(t,pathlib.Path('unused'),r)
+        self.assertEqual(r['probe_error'],'probe timeout')
+        self.assertEqual(r['capture_error'],'capture failure')
+        self.assertTrue(r['uart_responding'])
+    def test_state_snapshots_label_each_lifecycle_boundary(self):
+        t=Fake('MONWIN probe end status=read-restored-unclassified-reinitialize-required')
+        with mock.patch.object(m,'snapshot',side_effect=[{'61:97':x} for x in (12,76,116,204)]) as snap, mock.patch.object(m,'capture',return_value=(b'',{'frames':0})):
+            r=m.probe(t,pathlib.Path('unused'),timing=True,snapshot_state=True)
+        self.assertEqual(snap.call_count,4)
+        self.assertEqual([r[key]['61:97'] for key in ('state_before_probe','state_after_probe','state_after_reload','state_after_capture')],[12,76,116,204])
+    def test_post_probe_state_failure_still_reloads(self):
+        t=Fake('MONWIN probe end status=read-restored-unclassified-reinitialize-required')
+        with mock.patch.object(m,'snapshot',side_effect=[{},RuntimeError('state read'),{},{}]), mock.patch.object(m,'capture',return_value=(b'',{'frames':0})):
+            with self.assertRaisesRegex(RuntimeError,'state read'):
+                m.probe(t,pathlib.Path('unused'),snapshot_state=True)
+        self.assertEqual(t.ready,2)
+        self.assertEqual(t.sent[-1],b'i')
     def test_timing_opcode_and_timestamp_parser(self):
         t=Fake('MONWIN probe end status=read-restored-unclassified-reinitialize-required')
         with mock.patch.object(m,'capture',return_value=(b'',{'frames':0})):

@@ -4,19 +4,28 @@ from uart import Transport
 from tuner_mailbox_probe import normal
 from tuner_pattern_capture import capture
 from ts_capture import inspect
+from tuner_monitor_state_control import snapshot
 
-def probe(t,output,report=None,updates=False,timing=False):
+def probe(t,output,report=None,updates=False,timing=False,snapshot_state=False):
     if updates and timing:raise ValueError('Choose updates or timing')
     if report is None:report={}
     report.update(iq_identified=False,initialization=normal(t))
     report['updates']=updates
     report['timing']=timing
+    report['snapshot_state']=snapshot_state
     try:
+        if snapshot_state:report['state_before_probe']=snapshot(t)
         t.write(b'\x86' if timing else b'\x85' if updates else b'\x83')
+        t.expect('MONWIN probe start');report['probe_started']=True
         report['probe']=t.wait(lambda s:s.startswith('MONWIN probe end status='),60 if updates or timing else 30)
+        if snapshot_state:report['state_after_probe']=snapshot(t)
+    except Exception as error:
+        report['probe_error']=str(error)
+        raise
     finally:
         report['normal_reload']=normal(t)
         try:
+            if snapshot_state:report['state_after_reload']=snapshot(t)
             data,summary=capture(t,output)
             report['normal_capture']={**summary,**(inspect(data) if data else {})}
         except Exception as error:
@@ -24,6 +33,7 @@ def probe(t,output,report=None,updates=False,timing=False):
             raise
         finally:
             t.write(b'i');t.expect('UART application');report['uart_responding']=True
+            if snapshot_state:report['state_after_capture']=snapshot(t)
     if report['probe']!='MONWIN probe end status=read-restored-unclassified-reinitialize-required':
         raise RuntimeError(report['probe'])
     return report
@@ -49,6 +59,7 @@ def main():
     mode=p.add_mutually_exclusive_group()
     mode.add_argument('--updates',action='store_true',help='Compare repeated writes/edges of 00..03 and unverified 04..07; opcode0x85')
     mode.add_argument('--timing',action='store_true',help='Buffer selector 01/04 reads with no UART per read; compare zero/10ms delays and rewrites; opcode0x86')
+    p.add_argument('--snapshot-state',action='store_true',help='Read 13 known demod/control registers before/after probe and after reload/capture; separate times, adds UART latency')
     a=p.parse_args();a.log.parent.mkdir(parents=True,exist_ok=True)
     a.output_dir.mkdir(parents=True,exist_ok=True)
     offset=a.log.stat().st_size if a.log.exists() else 0
@@ -57,7 +68,7 @@ def main():
         t=Transport(a.port,log)
         try:
             t.write(b'i');t.expect('UART application')
-            probe(t,a.output_dir/'normal.ts',report,a.updates,a.timing)
+            probe(t,a.output_dir/'normal.ts',report,a.updates,a.timing,a.snapshot_state)
         except Exception as error:
             report['error']=str(error);raise
         finally:
