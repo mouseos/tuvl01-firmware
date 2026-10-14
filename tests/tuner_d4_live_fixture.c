@@ -25,7 +25,7 @@ int tuner_read_register(unsigned bank,unsigned reg,uint8_t *value){
 int tuner_write_register(unsigned bank,unsigned reg,uint8_t value){
     /* The live entry point never halts PSEQ or writes program addresses. */
     assert(bank==0x61 && reg==0xd4 && regs[0xf3]==0xe0);ops++;writes++;
-    assert(value==0x0e || value==0x2e || value==0x36 || value==0x16 || value==0x1e || value==0x26);
+    assert(value==0x0e || value==0x2e || value==0x36 || value==0x16 || value==0x1e || value==0x26 || value==0x06 || value==0x3e);
     if(persistent_restore && writes>1 && value==0x1e)return -1;
     if(!ignore_selection || value==0x1e)regs[reg]=value;
     return ops==fail_at?-1:0; /* Accepted before an uncertain error. */
@@ -69,5 +69,22 @@ int main(void){
     reset();uart_index=255;tuner_d4_window_live_select();assert(!writes && !ops && strstr(output,"unknown-selector"));
     reset();tuner_d4_window_live_select();assert(!writes && !ops && ticks==2000 && strstr(output,"selector-transport-timeout"));
     reset();uart_index=3;tuner_d4_window_live_select();assert(writes==2 && times==48 && strstr(output,"selector=00000002"));
+    for(unsigned index=0;index<2;index++){
+        unsigned single_total=0;
+        for(unsigned fail=0;!fail || fail<=single_total;fail++){
+            reset();fail_at=fail;tuner_d4_window_live_experimental(index);
+            if(!fail){single_total=ops;assert(times==48 && writes==2);
+                assert(strstr(output,"provenance=experimental-field-encoding"));
+                assert(strstr(output,index?"requested=0000003e":"requested=00000006"));}
+            assert(regs[0xd4]==0x1e && regs[0xf3]==0xe0 && regs[0xf4]==2 && regs[0xf5]==0x98);
+        }
+        printf("PASS: experimental index%u, %u uncertain failures/full restore\n",index,single_total);
+    }
+    reset();fail_at=0;uart_index=2;tuner_d4_window_experimental_select();assert(!ops && !writes);
+    reset();uart_index=1;tuner_d4_window_experimental_select();assert(writes==2 && times==48 && strstr(output,"selector=00000007"));
+    reset();ignore_selection=1;tuner_d4_window_live_experimental(0);
+    assert(strstr(output,"read-failed-restored") && regs[0xd4]==0x1e);ignore_selection=0;
+    reset();race=1;tuner_d4_window_live_experimental(1);
+    assert(strstr(output,"selected=00000000") && strstr(output,"read-failed-restored") && regs[0xd4]==0x1e);race=0;
 
 }

@@ -63,7 +63,13 @@ def observations(raw):
         rows=[dict(zip(fields,[int(x,16) for x in m])) for m in re.findall(sample,raw,re.M)],
         readbacks=[dict(zip(('requested','observed'),[int(x,16) for x in m])) for m in re.findall(readback,raw,re.M)])
 
-def probe(t,output,report,halted=False,buffered_live=False,buffered_selector=None):
+def probe(t,output,report,halted=False,buffered_live=False,buffered_selector=None,experimental_selector=None):
+    if experimental_selector is not None:
+        if experimental_selector not in (0,7) or halted or buffered_live or buffered_selector is not None:
+            raise ValueError('Choose one experimental field encoding, 0 or 7')
+        buffered_live=True
+    report['experimental_selector']=experimental_selector
+    report['provenance']='experimental-field-encoding' if experimental_selector is not None else 'native-motifs'
     if buffered_selector is not None:
         if buffered_selector not in BUFFERED_SELECTORS or halted or buffered_live:raise ValueError('Choose one native buffered selector')
         buffered_live=True
@@ -76,7 +82,8 @@ def probe(t,output,report,halted=False,buffered_live=False,buffered_selector=Non
     try:
         report['state_before_probe']=snapshot(t)
         prefix='D4LIVE' if buffered_live else 'D4WIN'
-        t.write(bytes([0x8c,BUFFERED_SELECTORS.index(buffered_selector)]) if buffered_selector is not None else b'\x8b' if buffered_live else b'\x87');t.expect(prefix+' probe start');report['probe_started']=True
+        command=bytes([0x8d,(0,7).index(experimental_selector)]) if experimental_selector is not None else bytes([0x8c,BUFFERED_SELECTORS.index(buffered_selector)]) if buffered_selector is not None else b'\x8b' if buffered_live else b'\x87'
+        t.write(command);t.expect(prefix+' probe start');report['probe_started']=True
         report['probe']=t.wait(lambda s:s.startswith(prefix+' probe end status='),30)
         report['state_after_probe']=snapshot(t)
     except Exception as error:
@@ -104,13 +111,14 @@ def main():
     mode.add_argument('--halted',action='store_true',help='RAM opcode0x87: halt PSEQ, buffer stock D4 selections, restore D4 before resume')
     mode.add_argument('--buffered-live',action='store_true',help='RAM opcode0x8b: six native selectors, 8-row buffers, PSEQ running, strict D4 guards')
     mode.add_argument('--buffered-selector',type=int,choices=BUFFERED_SELECTORS,help='RAM opcode0x8c plus fixed index: one native selection, restore and stop within each probe')
+    mode.add_argument('--experimental-selector',type=int,choices=(0,7),help='RAM opcode0x8d: hypothetical D4 bits5:3 encoding, not observed in native patches; no IQ meaning assigned')
     a=p.parse_args();a.log.parent.mkdir(parents=True,exist_ok=True)
     a.output_dir.mkdir(parents=True,exist_ok=True);report={'iq_identified':False}
     offset=a.log.stat().st_size if a.log.exists() else 0
     with a.log.open('ab') as log:
         t=Transport(a.port,log)
         try:
-            t.write(b'i');t.expect('UART application');probe(t,a.output_dir/'normal.ts',report,a.halted,a.buffered_live,a.buffered_selector)
+            t.write(b'i');t.expect('UART application');probe(t,a.output_dir/'normal.ts',report,a.halted,a.buffered_live,a.buffered_selector,a.experimental_selector)
         except Exception as error:report['error']=str(error);raise
         finally:
             t.ser.close();log.flush();report['observations']=observations(a.log.read_bytes()[offset:])

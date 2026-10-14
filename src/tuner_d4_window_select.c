@@ -3,7 +3,7 @@
 #include "tuner.h"
 #include "FreeRTOS.h"
 #include "task.h"
-void tuner_d4_window_live_select(void){
+static void select_index(unsigned experimental){
     TickType_t start=xTaskGetTickCount();int index;
     uart_puts("D4LIVE select start\n");
     for(;;){
@@ -13,5 +13,8 @@ void tuner_d4_window_live_select(void){
         }
         vTaskDelay(1);
     }
-    tuner_d4_window_live_selected(index);
+    if(experimental)tuner_d4_window_live_experimental(index);
+    else tuner_d4_window_live_selected(index);
 }
+void tuner_d4_window_live_select(void){select_index(0);}
+void tuner_d4_window_experimental_select(void){select_index(1);}

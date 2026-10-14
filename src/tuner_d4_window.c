@@ -106,8 +106,11 @@ static void live_probe(unsigned first,unsigned count){
     if(live_samples(0,0,-1) || tuner_read_register(0x61,0xd4,&saved)){
         uart_puts("D4LIVE probe end status=baseline-read-failed\n");return;
     }
-    static const uint8_t masks[]={0xcf,0xef,0xf7,0xd7,0xdf,0xe7};
-    static const uint8_t bits[]={0x0c,0x2c,0x34,0x14,0x1c,0x24},selectors[]={1,5,6,2,3,4};
+    /* Last two entries are experimental field encodings, NOT native motifs.
+     * Bits 5:3 are varied; bit2 follows native choices; other bits preserved.
+     * No meaning (including reserved/IQ) is assigned to choices 0 or 7. */
+    static const uint8_t masks[]={0xcf,0xef,0xf7,0xd7,0xdf,0xe7,0xc7,0xc7};
+    static const uint8_t bits[]={0x0c,0x2c,0x34,0x14,0x1c,0x24,0x04,0x3c},selectors[]={1,5,6,2,3,4,0,7};
     uart_puts("D4LIVE saved=");uart_hex(saved);uart_puts("\n");
     for(unsigned n=first;n<first+count;n++){
         uint8_t requested=(saved&masks[n])|bits[n];touched=1;
@@ -135,4 +138,9 @@ void tuner_d4_window_live_buffered(void){live_probe(0,6);}
 void tuner_d4_window_live_selected(unsigned index){
     if(index>=6){uart_puts("D4LIVE probe end status=unknown-selector\n");return;}
     live_probe(index,1);
+}
+void tuner_d4_window_live_experimental(unsigned index){
+    if(index>=2){uart_puts("D4LIVE probe end status=unknown-experimental-selector\n");return;}
+    uart_puts("D4LIVE provenance=experimental-field-encoding\n");
+    live_probe(index+6,1);
 }

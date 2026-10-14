@@ -9,6 +9,22 @@ class UART:
     def expect(self,line):return line
 
 class D4Window(unittest.TestCase):
+    def test_experimental_selection_is_separate_and_always_reloads(self):
+        for index,selector in enumerate((0,7)):
+            for status in ('read-restored-unclassified-reinitialize-required','read-failed-restored-reinitialize-required'):
+                t=UART();r={};result='D4LIVE probe end status='+status
+                t.wait=lambda predicate,timeout:result
+                with mock.patch.object(m,'normal',return_value='SERVE end status=ready') as reload, mock.patch.object(m,'snapshot',return_value={}), mock.patch.object(m,'capture',return_value=(b'',{})):
+                    if status.startswith('read-restored'):m.probe(t,pathlib.Path('unused'),r,experimental_selector=selector)
+                    else:
+                        with self.assertRaises(RuntimeError):m.probe(t,pathlib.Path('unused'),r,experimental_selector=selector)
+                    self.assertEqual(reload.call_count,2)
+                self.assertEqual(t.sent,[bytes([0x8d,index]),b'i'])
+                self.assertEqual(r['provenance'],'experimental-field-encoding')
+        for kwargs in ({'experimental_selector':1},{'experimental_selector':0,'halted':True},{'experimental_selector':7,'buffered_live':True},{'experimental_selector':0,'buffered_selector':1}):
+            t=UART()
+            with self.assertRaises(ValueError):m.probe(t,pathlib.Path('unused'),{},**kwargs)
+            self.assertEqual(t.sent,[])
     def test_halted_lifecycle_reloads_after_success_failure_and_timeout(self):
         for result in ('D4WIN probe end status=read-restored-unclassified-reinitialize-required',
                        'D4WIN probe end status=read-failed-restored-reinitialize-required',TimeoutError('probe')):

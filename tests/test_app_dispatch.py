@@ -19,6 +19,7 @@ class AppDispatch(unittest.TestCase):
         self.assertEqual(self.route(135),{'tuner_d4_window_halted':1})
         self.assertEqual(self.route(139),{'tuner_d4_window_live_buffered':1})
         self.assertEqual(self.route(140),{'tuner_d4_window_live_select':1})
+        self.assertEqual(self.route(141),{'tuner_d4_window_experimental_select':1})
     def test_monitor_window_timing_has_its_own_opcode(self):
         self.assertEqual(self.route(134),{'tuner_monitor_window_timing':1})
     def test_monitor_window_updates_has_its_own_opcode(self):
