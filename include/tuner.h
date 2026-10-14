@@ -43,4 +43,8 @@ int tuner_write_register(unsigned address,unsigned reg,uint8_t byte);
 int tuner_write_burst(unsigned address,unsigned reg,const uint8_t *bytes,unsigned count);
 void tuner_analog(void);
 void tuner_initialize(void);
+int tuner_program_mailbox_write_reference_record(unsigned index,uint8_t *expected);
+int tuner_program_mailbox_reference(unsigned index);
+void tuner_program_mailbox_reference_select(void);
+
 #endif

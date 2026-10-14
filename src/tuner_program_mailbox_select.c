@@ -17,3 +17,16 @@ void tuner_program_mailbox_select(void){
     if(!operand){uart_puts("MAILBOX probe end status=unknown-operand\n");return;}
     (void)tuner_program_mailbox_operand(operand);
 }
+
+void tuner_program_mailbox_reference_select(void){
+    TickType_t start=xTaskGetTickCount();int index;
+    uart_puts("MAILBOX reference select start\n");
+    for(;;){
+        index=uart_getc();if(index>=0)break;
+        if((TickType_t)(xTaskGetTickCount()-start)>=pdMS_TO_TICKS(2000)){
+            uart_puts("MAILBOX probe end status=reference-transport-timeout\n");return;
+        }
+        vTaskDelay(1);
+    }
+    (void)tuner_program_mailbox_reference(index);
+}

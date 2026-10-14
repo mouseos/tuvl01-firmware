@@ -43,6 +43,21 @@ class MailboxUART(unittest.TestCase):
         t=Fake('unused')
         with self.assertRaises(ValueError):m.probe(t,pathlib.Path('unused'),register_d5_write20=True,operand=0x0f0e)
         self.assertEqual(t.sent,[])
+    def test_reference_whitelist_and_complete_rows(self):
+        for index,reg in enumerate(m.REFERENCE_REGS):
+            t=Fake('MAILBOX probe end status=read-restored-unclassified-reinitialize-required')
+            with mock.patch.object(m,'capture',return_value=(b'',{})):
+                r=m.probe(t,pathlib.Path('unused'),register_check=reg)
+            self.assertEqual(t.sent[2],bytes([0x8a,index]))
+            self.assertTrue(r['probe_started'])
+        t=Fake('unused')
+        for reg in (0,0xd5,0x100):
+            with self.assertRaises(ValueError):m.probe(t,pathlib.Path('unused'),register_check=reg)
+        self.assertEqual(t.sent,[])
+        raw=b'MAILBOX probe start source=register-28-write20 address=00000298 count=00000518\nMAILBOX reference phase=00000001 index=00000000 register=00000028 value=00000002\nMAILBOX reference phase=00000001 index=00000001 register=00000028 value=RTOS tick\n'
+        item=m.observations(raw)['items'][0]
+        self.assertEqual(item['source'],'register-28-write20')
+        self.assertEqual(item['reference_rows'],[{'phase':1,'index':0,'register':0x28,'value':2}])
     def test_new_stock_store_candidate_indices_are_appended(self):
         self.assertEqual(m.KNOWN_OPERANDS[13:],(0x0f0e,0x0ffe,0x1ff3))
         for operand,index in zip(m.KNOWN_OPERANDS[13:],range(13,16)):

@@ -51,3 +51,10 @@ int tuner_program_mailbox_write_d5_record(uint8_t *expected,unsigned write20){
     const uint8_t slot[]={0x30,0xd5,write20?0x20:0x21,0x6d,1,1};
     return write_slot(slot,expected);
 }
+
+int tuner_program_mailbox_write_reference_record(unsigned index,uint8_t *expected){
+    static const uint8_t regs[]={0xd4,0x28,0x95};
+    if(index>=sizeof regs)return -1;
+    const uint8_t slot[]={0x30,regs[index],0x20,0x6d,1,1};
+    return write_slot(slot,expected);
+}

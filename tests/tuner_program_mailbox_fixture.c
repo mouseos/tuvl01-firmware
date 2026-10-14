@@ -19,8 +19,11 @@ void vTaskDelay(uint32_t n){ticks+=n;}
 static char output[262144];
 void uart_puts(const char *s){
     if(!strcmp(s,"MAILBOX transfer operand=")){halt_writes=0;current_d5=0;}
-    if(!strcmp(s,"MAILBOX transfer source=register-D5\n")){halt_writes=0;current_d5=1;}
-    if(!strcmp(s,"MAILBOX transfer source=register-D5-write20\n")){halt_writes=0;current_d5=2;}
+    if(!strcmp(s,"register-D5")){halt_writes=0;current_d5=1;}
+    if(!strcmp(s,"register-D5-write20")){halt_writes=0;current_d5=2;}
+    if(!strcmp(s,"register-D4-write20")){halt_writes=0;current_d5=3;}
+    if(!strcmp(s,"register-28-write20")){halt_writes=0;current_d5=4;}
+    if(!strcmp(s,"register-95-write20")){halt_writes=0;current_d5=5;}
     assert(strlen(output)+strlen(s)<sizeof output);strcat(output,s);
 }
 void uart_hex(uint32_t v){
@@ -34,7 +37,7 @@ int tuner_read_register(unsigned bank,unsigned reg,uint8_t *v){
     assert(!payload_expected); /* No register read between arm and payload. */
     assert(bank==0x61 || (bank==0x60 && reg==0x6d));
     ops++;if(ops==fail_at)return -1;
-    *v=reg==0xf8?(parity!=0)<<4:reg==0x6d?(bank==0x60?7:memory[0x4e7]==0x30?0x35:memory[0x4e9]==0x0c?42:8):regs[reg];
+    *v=reg==0xf8?(parity!=0)<<4:reg==0x6d?(bank==0x60?7:memory[0x4e7]==0x30?regs[memory[0x4e8]]:memory[0x4e9]==0x0c?42:8):regs[reg];
     if(ignore_address && writes && reg==0xf4)*v=0;
     if(reg==0xf8){
         parity_reads++;
@@ -53,7 +56,8 @@ int tuner_write_register(unsigned bank,unsigned reg,uint8_t v){
     }else if(reg==0xf6){
         assert(cursor>=0x298 && cursor<0x298+1304 && regs[0xf3]==0xe1);
         unsigned offset=cursor-0x298;
-        const uint8_t slot[]={0x30,0xd5,current_d5==2?0x20:0x21,0x6d,1,1};
+        const uint8_t source_regs[]={0,0xd5,0xd5,0xd4,0x28,0x95};
+        const uint8_t slot[]={0x30,source_regs[current_d5],current_d5>=2?0x20:0x21,0x6d,1,1};
         uint8_t correction=(current_operand>>8)^(current_operand&255)^0x0f^0x0d;
         if(current_d5){correction=0;for(unsigned i=0;i<6;i++)correction^=pseq_bytes[607+0x4e7-0x298+i]^slot[i];}
         assert(v==(offset==1303?(pseq_bytes[607+offset]^correction):
@@ -75,7 +79,7 @@ int tuner_write_burst(unsigned bank,unsigned reg,const uint8_t *bytes,unsigned c
 }
 static void reset(void){
     memset(regs,0,sizeof regs);regs[0xf3]=0xe0;regs[0xf4]=2;regs[0xf5]=0x98;
-    regs[0xd4]=0x0d;regs[0xd5]=0x35;
+    regs[0xd4]=0x0d;regs[0xd5]=0x35;regs[0x28]=2;regs[0x95]=10;
     memcpy(memory+0x298,pseq_bytes+607,1304);
     ops=writes=cursor=parity=restore_start=payload_expected=halt_writes=0;output[0]=0;
     bursts=0;
@@ -146,4 +150,21 @@ int main(void){
     assert(tuner_program_mailbox_write_d5_record(0,0)==-1);
     printf("PASS: live D5 output mode%u, %u single failures, six-byte slot and adjacent initialization restored\n",mode,total);
     }
+    for(unsigned index=0;index<3;index++){
+        total=0;
+        for(unsigned fail=0;!fail || fail<=total;fail++){
+            reset();fail_at=fail;tuner_program_mailbox_reference(index);
+            if(!fail){total=ops;assert(strstr(output,"MAILBOX reference phase=00000001"));
+                assert(strstr(output,"read-restored-unclassified-reinitialize-required"));}
+            assert(!memcmp(memory+0x298,pseq_bytes+607,1304));
+            assert(regs[0xf3]==0xe0 && regs[0xf4]==2 && regs[0xf5]==0x98);
+        }
+        printf("PASS: reference index%u, %u single failures and full restoration\n",index,total);
+    }
+    reset();assert(!tuner_program_mailbox_reference(3) && !ops && !writes);
+    uint8_t unused;assert(tuner_program_mailbox_write_reference_record(3,&unused)==-1);
+    reset();uart_index=255;tuner_program_mailbox_reference_select();assert(!ops && !writes);
+    reset();uart_index=-1;ticks=0;tuner_program_mailbox_reference_select();
+    assert(!ops && !writes && strstr(output,"reference-transport-timeout"));
+
 }
