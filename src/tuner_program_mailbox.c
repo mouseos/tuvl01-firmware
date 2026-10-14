@@ -5,7 +5,7 @@
 /* Experimental instruction operand, not an established IQ/sample reader.
  * The host must load this image and initialize the complete stock patch
  * before the probe, then reload it afterwards. Parity is not memory readback. */
-static int mailbox_transfer(uint8_t operand){
+static int mailbox_transfer(uint16_t operand){
     uint8_t v,expected;
     uart_puts("MAILBOX transfer operand=");uart_hex(operand);uart_puts("\n");
     /* Halt before changing the address; trigger transfer again AFTER setting
@@ -49,31 +49,32 @@ static int mailbox_samples(unsigned phase){
     }
     return 0;
 }
-void tuner_program_mailbox_probe(void){
+static int mailbox_probe(uint16_t operand){
     uint8_t control,high,low,v;
     unsigned failed=0,restored=1;
-    uart_puts("MAILBOX probe start address=00000298 count=00000518 operand=00000f0c\n");
+    uart_puts("MAILBOX probe start address=00000298 count=00000518 operand=");
+    uart_hex(operand);uart_puts("\n");
     if(!tuner_program_mailbox_original_valid()){
-        uart_puts("MAILBOX probe end status=unexpected-source-payload\n");return;
+        uart_puts("MAILBOX probe end status=unexpected-source-payload\n");return 0;
     }
     if(tuner_read_register(0x61,0xf3,&control) || tuner_read_register(0x61,0xf4,&high) ||
        tuner_read_register(0x61,0xf5,&low)){
-        uart_puts("MAILBOX probe end status=i2c-failed-before-change\n");return;
+        uart_puts("MAILBOX probe end status=i2c-failed-before-change\n");return 0;
     }
     if(control!=0xe0 || high!=2 || low!=0x98){
-        uart_puts("MAILBOX probe end status=unexpected-state\n");return;
+        uart_puts("MAILBOX probe end status=unexpected-state\n");return 0;
     }
     if(mailbox_samples(0)){
-        uart_puts("MAILBOX probe end status=baseline-read-failed\n");return;
+        uart_puts("MAILBOX probe end status=baseline-read-failed\n");return 0;
     }
     /* Any attempted transfer can have reached the chip: always restore. */
-    if(mailbox_transfer(0x0c))failed=1;
+    if(mailbox_transfer(operand))failed=1;
     if(!failed && (tuner_write_register(0x61,0xf3,control) ||
                   tuner_read_register(0x61,0xf3,&v) || v!=control))failed=1;
     if(!failed && mailbox_samples(1))failed=1;
     /* Retry a failed restoration once from a fully reselected address.
      * Never continue streaming bytes after an uncertain failed payload byte. */
-    if(mailbox_transfer(0x0d) && mailbox_transfer(0x0d))restored=0;
+    if(mailbox_transfer(0x0f0d) && mailbox_transfer(0x0f0d))restored=0;
     if(restored){
         if(tuner_write_register(0x61,0xf4,high))restored=0;
         if(tuner_write_register(0x61,0xf5,low))restored=0;
@@ -86,4 +87,20 @@ void tuner_program_mailbox_probe(void){
     uart_puts(!restored?"MAILBOX probe end status=restore-failed-reinitialize-required\n":
               failed?"MAILBOX probe end status=read-failed-restored-reinitialize-required\n":
                      "MAILBOX probe end status=read-restored-unclassified-reinitialize-required\n");
+    return !failed && restored;
+}
+void tuner_program_mailbox_probe(void){(void)mailbox_probe(0x0f0c);}
+void tuner_program_mailbox_sweep(void){
+    unsigned completed=0,failed=0;
+    uart_puts("MAILBOX sweep start\n");
+    for(unsigned n=0;tuner_program_mailbox_known_operand(n);n++){
+        uint16_t operand=tuner_program_mailbox_known_operand(n);
+        uart_puts("MAILBOX sweep item index=");uart_hex(n);
+        uart_puts(" operand=");uart_hex(operand);uart_puts("\n");
+        if(!mailbox_probe(operand)){failed=1;break;}
+        completed++;
+    }
+    uart_puts("MAILBOX sweep completed=");uart_hex(completed);uart_puts("\n");
+    uart_puts(failed?"MAILBOX sweep end status=failed-reinitialize-required\n":
+                    "MAILBOX sweep end status=read-restored-unclassified-reinitialize-required\n");
 }

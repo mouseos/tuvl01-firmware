@@ -17,16 +17,32 @@ class Fake:
         assert predicate(s);return s
 
 class MailboxUART(unittest.TestCase):
+    def test_complete_rows_and_operand_identity(self):
+        raw=b'''MAILBOX probe start address=00000298 count=00000518 operand=00001ff0
+MAILBOX transfer operand=00001ff0
+MAILBOX transfer parity index=00000000 f8=00000050 expected=00000001
+MAILBOX sample phase=00000001 index=00000000 sub6d=00000007 main6d=000000ab
+MAILBOX sample phase=00000001 index=00000001 sub6d=RTOS tick main6d=000000cd
+MAILBOX probe end status=read-restored-unclassified-reinitialize-required
+MAILBOX probe start address=00000298 count=00000518 operand=00000f05
+'''
+        items=m.observations(raw)['items']
+        self.assertEqual([x['operand'] for x in items],[0x1ff0,0xf05])
+        self.assertEqual(items[0]['samples'],[{'phase':1,'index':0,'sub6d':7,'main6d':0xab}])
+        self.assertEqual(items[0]['transfers'][0]['parity'],[{'index':0,'f8':0x50,'expected':1}])
+        self.assertEqual(items[1]['samples'],[])
     def test_reload_on_success_failure_and_timeout(self):
         cases=['MAILBOX probe end status=read-restored-unclassified-reinitialize-required',
                'MAILBOX probe end status=restore-failed-reinitialize-required',TimeoutError('probe')]
-        for result in cases:
-            with self.subTest(result=result):
+        for known in [False,True]:
+          for original in cases:
+            result=original.replace('MAILBOX probe','MAILBOX sweep') if known and isinstance(original,str) else original
+            with self.subTest(result=result,known=known):
                 t=Fake(result)
                 with mock.patch.object(m,'capture',return_value=(b'',{'frames':0})):
-                    if result==cases[0]:self.assertTrue(m.probe(t,pathlib.Path('unused'))['uart_responding'])
+                    if original==cases[0]:self.assertTrue(m.probe(t,pathlib.Path('unused'),known_operands=known)['uart_responding'])
                     else:
-                        with self.assertRaises((RuntimeError,TimeoutError)):m.probe(t,pathlib.Path('unused'))
+                        with self.assertRaises((RuntimeError,TimeoutError)):m.probe(t,pathlib.Path('unused'),known_operands=known)
                 self.assertEqual(t.ready,2)
-                self.assertEqual(t.sent,[bytes([16]),b'E',b'\x81',bytes([16]),b'E',b'i'])
+                self.assertEqual(t.sent,[bytes([16]),b'E',b'\x82' if known else b'\x81',bytes([16]),b'E',b'i'])
 if __name__=='__main__':unittest.main()

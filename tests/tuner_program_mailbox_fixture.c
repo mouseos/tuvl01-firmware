@@ -10,7 +10,7 @@ static unsigned ops,fail_at,cursor,parity,writes,source_ok=1,ignore_address,pers
 static unsigned restore_start;
 static unsigned delayed_parity,persistent_changed_parity,parity_reads;
 static unsigned payload_expected,halt_writes,current_operand,bursts;
-static char output[16384];
+static char output[262144];
 void uart_puts(const char *s){
     if(!strcmp(s,"MAILBOX transfer operand="))halt_writes=0;
     assert(strlen(output)+strlen(s)<sizeof output);strcat(output,s);
@@ -18,7 +18,7 @@ void uart_puts(const char *s){
 void uart_hex(uint32_t v){
     const char *marker="MAILBOX transfer operand=";size_t n=strlen(output),m=strlen(marker);
     if(n>=m && !strcmp(output+n-m,marker))current_operand=v;
-    if(v==0x0d && n>=m && !strcmp(output+n-m,marker) && !restore_start)restore_start=ops+1;
+    if(v==0x0f0d && n>=m && !strcmp(output+n-m,marker) && !restore_start)restore_start=ops+1;
     char s[9];snprintf(s,sizeof s,"%08x",v);uart_puts(s);
 }
 int tuner_program_mailbox_original_valid(void){return source_ok;}
@@ -45,8 +45,9 @@ int tuner_write_register(unsigned bank,unsigned reg,uint8_t v){
     }else if(reg==0xf6){
         assert(cursor>=0x298 && cursor<0x298+1304 && regs[0xf3]==0xe1);
         unsigned offset=cursor-0x298;
-        assert(v==(cursor==0x4e9?current_operand:pseq_bytes[607+offset]));
-        if(persistent_restore && current_operand==0x0d && cursor==0x4e9)return -1;
+        assert(v==(cursor==0x4e8?current_operand>>8:
+                   cursor==0x4e9?(current_operand&255):pseq_bytes[607+offset]));
+        if(persistent_restore && current_operand==0x0f0d && cursor==0x4e9)return -1;
         memory[cursor++]=v;
         for(unsigned x=v;x;x>>=1)parity^=x&1;
     }else if(!(ignore_address && reg==0xf4))regs[reg]=v;
@@ -92,6 +93,14 @@ int main(void){
     assert(!strstr(output,"MAILBOX sample phase=00000001"));
     assert(strstr(output,"read-failed-restored-reinitialize-required") && memory[0x4e9]==0x0d);
     persistent_changed_parity=0;
+    reset();fail_at=0;tuner_program_mailbox_sweep();
+    assert(bursts==13*22 && !memcmp(memory+0x298,pseq_bytes+607,1304));
+    assert(strstr(output,"MAILBOX sweep completed=0000000d"));
+    assert(strstr(output,"MAILBOX sweep end status=read-restored-unclassified-reinitialize-required"));
+    reset();fail_at=40;tuner_program_mailbox_sweep();
+    assert(strstr(output,"MAILBOX sweep completed=00000000"));
+    assert(strstr(output,"MAILBOX sweep end status=failed-reinitialize-required"));
+    assert(!memcmp(memory+0x298,pseq_bytes+607,1304));
     reset();persistent_restore=1;tuner_program_mailbox_probe();
     assert(regs[0xf3]==0xe1 && strstr(output,"restore-failed-reinitialize-required"));
     printf("PASS: mailbox uncertain-write restoration, %u single failure positions, address guard and persistent restore failure\n",total);
