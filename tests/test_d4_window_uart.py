@@ -23,6 +23,23 @@ class D4Window(unittest.TestCase):
                     with self.assertRaises((RuntimeError,TimeoutError)):m.probe(t,pathlib.Path('unused'),r,halted=True)
                 self.assertEqual(reload.call_count,2)
             self.assertEqual(t.sent,[b'\x87',b'i']);self.assertTrue(r['uart_responding'])
+    def test_buffered_live_lifecycle_and_mismatch_rows(self):
+        for status in ('read-restored-unclassified-reinitialize-required','read-failed-restored-reinitialize-required','restore-failed-reinitialize-required'):
+            t=UART();r={};result='D4LIVE probe end status='+status
+            def wait(predicate,timeout):
+                self.assertTrue(predicate(result));return result
+            t.wait=wait
+            with mock.patch.object(m,'normal',return_value='SERVE end status=ready') as reload, mock.patch.object(m,'snapshot',return_value={}), mock.patch.object(m,'capture',return_value=(b'',{})):
+                if status.startswith('read-restored'):m.probe(t,pathlib.Path('unused'),r,buffered_live=True)
+                else:
+                    with self.assertRaises(RuntimeError):m.probe(t,pathlib.Path('unused'),r,buffered_live=True)
+                self.assertEqual(reload.call_count,2)
+            self.assertEqual(t.sent,[b'\x8b',b'i']);self.assertTrue(r['uart_responding'])
+        raw=b'D4LIVE sample phase=00000001 index=00000000 selector=00000001 requested=0000000e first=0000000e data=00000001 last=0000001e before=00000001 after=00000002 selected=00000000\nD4LIVE sample phase=RTOS tick\n'
+        rows=m.observations(raw)['live_rows']
+        self.assertEqual(len(rows),1);self.assertEqual(rows[0]['selected'],0)
+        self.assertEqual(rows[0]['last'],0x1e)
+        with self.assertRaises(ValueError):m.probe(UART(),pathlib.Path('unused'),{},halted=True,buffered_live=True)
     def test_partial_sample_lines_are_not_repaired(self):
         raw=b'D4WIN sample phase=00000001 index=00000000 first=00000015 data=0000003f last=00000015 before=00000001 after=00000002\nD4WIN sample phase=RTOS tick\nD4WIN readback requested=00000015 observed=0000000d\n'
         r=m.observations(raw)
