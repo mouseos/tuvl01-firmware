@@ -13,6 +13,7 @@ void tuner_program_restart_probe(void);
 void tuner_program_address_probe(void);
 void tuner_program_mailbox_probe(void);
 int tuner_program_mailbox_original_valid(void);
+int tuner_program_mailbox_write_record(uint8_t operand,uint8_t *expected);
 void tuner_pin_capture_probe(void);
 void tuner_pin_test_probe(void);
 void tuner_pin_gpio_selftest(void);
@@ -27,7 +28,7 @@ int tuner_read_burst(unsigned address,unsigned reg,uint8_t *bytes,unsigned count
  * Accepts 2..8 bytes, and leaves register/source selection unchanged. */
 int tuner_read_burst_restart(unsigned address,unsigned reg,uint8_t *bytes,unsigned count,unsigned *received);
 int tuner_write_register(unsigned address,unsigned reg,uint8_t byte);
-/* One pointer write followed by 1..8 payload bytes in a single transaction. */
+/* One pointer write followed by 1..128 payload bytes in a single transaction. */
 int tuner_write_burst(unsigned address,unsigned reg,const uint8_t *bytes,unsigned count);
 void tuner_analog(void);
 void tuner_initialize(void);

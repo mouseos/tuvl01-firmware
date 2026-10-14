@@ -6,27 +6,26 @@
  * The host must load this image and initialize the complete stock patch
  * before the probe, then reload it afterwards. Parity is not memory readback. */
 static int mailbox_transfer(uint8_t operand){
-    uint8_t v;
+    uint8_t v,expected;
     uart_puts("MAILBOX transfer operand=");uart_hex(operand);uart_puts("\n");
     /* Halt before changing the address; trigger transfer again AFTER setting
      * the address, following the stock patch loader's latch/reset sequence. */
     if(tuner_write_register(0x61,0xf3,0xe3) || tuner_read_register(0x61,0xf3,&v))return -1;
     uart_puts("MAILBOX transfer halted f3=");uart_hex(v);uart_puts("\n");
     if(v!=0xe1 && v!=0xe3)return -1;
-    if(tuner_write_register(0x61,0xf4,4) || tuner_write_register(0x61,0xf5,0xe7) ||
+    if(tuner_write_register(0x61,0xf4,2) || tuner_write_register(0x61,0xf5,0x98) ||
        tuner_read_register(0x61,0xf4,&v))return -1;
     uart_puts("MAILBOX transfer address f4=");uart_hex(v);uart_puts("\n");
-    if(v!=4)return -1;
+    if(v!=2)return -1;
     if(tuner_read_register(0x61,0xf5,&v))return -1;
     uart_puts("MAILBOX transfer address f5=");uart_hex(v);uart_puts("\n");
-    if(v!=0xe7)return -1;
-    const uint8_t payload[3]={0xc5,0x0f,operand};
+    if(v!=0x98)return -1;
     /* Stock loader arms F3 then writes F6 without an intervening read.
      * Write acknowledgement is not verification of the resulting F3 value. */
     if(tuner_write_register(0x61,0xf3,0xe3))return -1;
-    if(tuner_write_burst(0x61,0xf6,payload,3))return -1;
+    if(tuner_program_mailbox_write_record(operand,&expected))return -1;
     uart_puts("MAILBOX transfer arm-payload writes acknowledged\n");
-    /* C5/0F/0C has even bit parity; C5/0F/0D has odd parity. */
+    /* Expected parity covers all 1304 bytes, including the operand change. */
     unsigned matches=0;
     /* Eight finite observations, spaced by UART output and I2C latency.
      * Require the final three to match; never ignore a parity mismatch.
@@ -35,8 +34,8 @@ static int mailbox_transfer(uint8_t operand){
         if(tuner_read_register(0x61,0xf8,&v))return -1;
         uart_puts("MAILBOX transfer parity index=");uart_hex(n);
         uart_puts(" f8=");uart_hex(v);
-        uart_puts(" expected=");uart_hex(operand==0x0d);uart_puts("\n");
-        if(((v>>4)&1)==(operand==0x0d))matches++;else matches=0;
+        uart_puts(" expected=");uart_hex(expected);uart_puts("\n");
+        if(((v>>4)&1)==expected)matches++;else matches=0;
     }
     return matches>=3?0:-1;
 }
@@ -53,7 +52,7 @@ static int mailbox_samples(unsigned phase){
 void tuner_program_mailbox_probe(void){
     uint8_t control,high,low,v;
     unsigned failed=0,restored=1;
-    uart_puts("MAILBOX probe start address=000004e7 operand=00000f0c\n");
+    uart_puts("MAILBOX probe start address=00000298 count=00000518 operand=00000f0c\n");
     if(!tuner_program_mailbox_original_valid()){
         uart_puts("MAILBOX probe end status=unexpected-source-payload\n");return;
     }
