@@ -29,6 +29,20 @@ class MailboxUART(unittest.TestCase):
         self.assertEqual(item['source_rows'],[{'phase':1,'index':0,'d4':0xe,'d5':0x35}])
         self.assertEqual(item['transfers'][0]['source'],'register-D5')
         with self.assertRaises(ValueError):m.probe(t,pathlib.Path('unused'),register_d5=True,operand=0x0f0e)
+    def test_d5_write20_has_distinct_route_and_output_provenance(self):
+        t=Fake('MAILBOX probe end status=read-restored-unclassified-reinitialize-required')
+        with mock.patch.object(m,'capture',return_value=(b'',{})):
+            r=m.probe(t,pathlib.Path('unused'),register_d5_write20=True)
+        self.assertEqual(t.sent[2],b'\x89')
+        self.assertTrue(r['register_d5_write20'])
+        raw=b'MAILBOX probe start source=register-D5-write20 address=00000298 count=00000518\nMAILBOX transfer source=register-D5-write20\n'
+        item=m.observations(raw)['items'][0]
+        self.assertEqual(item['output_opcode'],0x20)
+        self.assertEqual(item['transfers'][0]['source'],'register-D5-write20')
+        self.assertNotIn('operand',item)
+        t=Fake('unused')
+        with self.assertRaises(ValueError):m.probe(t,pathlib.Path('unused'),register_d5_write20=True,operand=0x0f0e)
+        self.assertEqual(t.sent,[])
     def test_new_stock_store_candidate_indices_are_appended(self):
         self.assertEqual(m.KNOWN_OPERANDS[13:],(0x0f0e,0x0ffe,0x1ff3))
         for operand,index in zip(m.KNOWN_OPERANDS[13:],range(13,16)):

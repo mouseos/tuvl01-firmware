@@ -20,6 +20,7 @@ static char output[262144];
 void uart_puts(const char *s){
     if(!strcmp(s,"MAILBOX transfer operand=")){halt_writes=0;current_d5=0;}
     if(!strcmp(s,"MAILBOX transfer source=register-D5\n")){halt_writes=0;current_d5=1;}
+    if(!strcmp(s,"MAILBOX transfer source=register-D5-write20\n")){halt_writes=0;current_d5=2;}
     assert(strlen(output)+strlen(s)<sizeof output);strcat(output,s);
 }
 void uart_hex(uint32_t v){
@@ -52,7 +53,7 @@ int tuner_write_register(unsigned bank,unsigned reg,uint8_t v){
     }else if(reg==0xf6){
         assert(cursor>=0x298 && cursor<0x298+1304 && regs[0xf3]==0xe1);
         unsigned offset=cursor-0x298;
-        const uint8_t slot[]={0x30,0xd5,0x21,0x6d,1,1};
+        const uint8_t slot[]={0x30,0xd5,current_d5==2?0x20:0x21,0x6d,1,1};
         uint8_t correction=(current_operand>>8)^(current_operand&255)^0x0f^0x0d;
         if(current_d5){correction=0;for(unsigned i=0;i<6;i++)correction^=pseq_bytes[607+0x4e7-0x298+i]^slot[i];}
         assert(v==(offset==1303?(pseq_bytes[607+offset]^correction):
@@ -132,14 +133,17 @@ int main(void){
     assert(regs[0xf3]==0xe1 && strstr(output,"restore-failed-reinitialize-required"));
     printf("PASS: mailbox uncertain-write restoration, %u single failure positions, address guard and persistent restore failure\n",total);
     persistent_restore=0;total=0;
+    for(unsigned mode=1;mode<=2;mode++){total=0;
     for(unsigned fail=0;!fail || fail<=total;fail++){
-        reset();fail_at=fail;tuner_program_mailbox_d5();
+        reset();fail_at=fail;
+        if(mode==1)tuner_program_mailbox_d5();else tuner_program_mailbox_d5_write20();
         if(!fail){total=ops;assert(strstr(output,"source=register-D5"));
             assert(strstr(output,"phase=00000001 index=00000000 sub6d=00000007 main6d=00000035"));
             assert(strstr(output,"d4=0000000d d5=00000035"));}
         assert(!memcmp(memory+0x298,pseq_bytes+607,1304));
         assert(regs[0xf3]==0xe0 && regs[0xf4]==2 && regs[0xf5]==0x98);
     }
-    assert(tuner_program_mailbox_write_d5_record(0)==-1);
-    printf("PASS: live D5 bridge, %u single failures, six-byte slot and adjacent initialization restored\n",total);
+    assert(tuner_program_mailbox_write_d5_record(0,0)==-1);
+    printf("PASS: live D5 output mode%u, %u single failures, six-byte slot and adjacent initialization restored\n",mode,total);
+    }
 }

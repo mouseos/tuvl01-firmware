@@ -42,10 +42,12 @@ int tuner_program_mailbox_write_record(uint16_t operand,uint8_t *expected){
     const uint8_t slot[]={0xc5,operand>>8,operand,0x21,0x6d,1};
     return write_slot(slot,expected);
 }
-int tuner_program_mailbox_write_d5_record(uint8_t *expected){
-    /* Observed 30 D5 register-read candidate followed by the existing
-     * 21 6D mailbox write/01 return. Final 01 pads the six-byte slot;
+int tuner_program_mailbox_write_d5_record(uint8_t *expected,unsigned write20){
+    /* Observed 30 D5 read candidate followed by 20/21 6D output candidates.
+     * 20 follows native register write motifs; 21 is the existing mailbox.
+     * Their internal output sources are not established. Final 01 pads the slot;
      * adjacent initialization at 04ED remains byte-for-byte unchanged. */
-    const uint8_t slot[]={0x30,0xd5,0x21,0x6d,1,1};
+    if(write20>1)return -1;
+    const uint8_t slot[]={0x30,0xd5,write20?0x20:0x21,0x6d,1,1};
     return write_slot(slot,expected);
 }

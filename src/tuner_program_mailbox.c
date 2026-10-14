@@ -7,7 +7,7 @@
  * before the probe, then reload it afterwards. Parity is not memory readback. */
 static int mailbox_transfer(uint16_t operand,unsigned d5){
     uint8_t v,expected;
-    if(d5)uart_puts("MAILBOX transfer source=register-D5\n");
+    if(d5)uart_puts(d5==2?"MAILBOX transfer source=register-D5-write20\n":"MAILBOX transfer source=register-D5\n");
     else {uart_puts("MAILBOX transfer operand=");uart_hex(operand);uart_puts("\n");}
     /* Halt before changing the address; trigger transfer again AFTER setting
      * the address, following the stock patch loader's latch/reset sequence. */
@@ -24,7 +24,7 @@ static int mailbox_transfer(uint16_t operand,unsigned d5){
     /* Stock loader arms F3 then writes F6 without an intervening read.
      * Write acknowledgement is not verification of the resulting F3 value. */
     if(tuner_write_register(0x61,0xf3,0xe3))return -1;
-    if(d5?tuner_program_mailbox_write_d5_record(&expected):tuner_program_mailbox_write_record(operand,&expected))return -1;
+    if(d5?tuner_program_mailbox_write_d5_record(&expected,d5==2):tuner_program_mailbox_write_record(operand,&expected))return -1;
     uart_puts("MAILBOX transfer arm-payload writes acknowledged\n");
     /* Expected parity covers all 1304 bytes, including the operand change. */
     unsigned matches=0;
@@ -60,7 +60,7 @@ static int mailbox_probe(uint16_t operand,unsigned d5){
     for(unsigned n=0;tuner_program_mailbox_known_operand(n);n++)
         if(operand==tuner_program_mailbox_known_operand(n))known=1;
     if(!d5 && !known){uart_puts("MAILBOX probe end status=unknown-operand\n");return 0;}
-    if(d5)uart_puts("MAILBOX probe start source=register-D5 address=00000298 count=00000518\n");
+    if(d5)uart_puts(d5==2?"MAILBOX probe start source=register-D5-write20 address=00000298 count=00000518\n":"MAILBOX probe start source=register-D5 address=00000298 count=00000518\n");
     else {uart_puts("MAILBOX probe start address=00000298 count=00000518 operand=");uart_hex(operand);uart_puts("\n");}
     if(!tuner_program_mailbox_original_valid()){
         uart_puts("MAILBOX probe end status=unexpected-source-payload\n");return 0;
@@ -99,6 +99,7 @@ static int mailbox_probe(uint16_t operand,unsigned d5){
 }
 int tuner_program_mailbox_operand(uint16_t operand){return mailbox_probe(operand,0);}
 void tuner_program_mailbox_d5(void){(void)mailbox_probe(0,1);}
+void tuner_program_mailbox_d5_write20(void){(void)mailbox_probe(0,2);}
 void tuner_program_mailbox_probe(void){(void)tuner_program_mailbox_operand(0x0f0c);}
 void tuner_program_mailbox_sweep(void){
     unsigned completed=0,failed=0;
