@@ -11,6 +11,10 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
 class AppDispatch(unittest.TestCase):
+    def test_monitor_window_timing_has_its_own_opcode(self):
+        self.assertEqual(self.route(134),{'tuner_monitor_window_timing':1})
+    def test_monitor_window_updates_has_its_own_opcode(self):
+        self.assertEqual(self.route(133),{'tuner_monitor_window_updates':1})
     def test_program_mailbox_select_has_its_own_opcode(self):
         self.assertEqual(self.route(132),{'tuner_program_mailbox_select':1})
     def test_monitor_window_has_its_own_opcode(self):

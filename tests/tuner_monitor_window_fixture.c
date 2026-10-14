@@ -5,9 +5,17 @@
 #include <string.h>
 #include "tuner.h"
 static uint8_t regs[256];
-static unsigned ops,fail_at,writes,persistent_restore,short_read;
-static char output[32768];
-void uart_puts(const char *s){assert(strlen(output)+strlen(s)<sizeof output);strcat(output,s);}
+static unsigned ops,fail_at,writes,persistent_restore,short_read,selector_writes,unsupported_selector;
+static char output[65536];
+static unsigned times,pauses;
+uint32_t board_time_counts(void){return ++times;}
+void tuner_monitor_window_pause(unsigned ms){assert(ms==10);pauses++;}
+void uart_puts(const char *s){
+    /* Successful buffered acquisitions emit nothing until all 16 pairs
+     * have both timestamps. Failure reporting may end a partial block. */
+    if(!fail_at && times)assert(times%32==0);
+    assert(strlen(output)+strlen(s)<sizeof output);strcat(output,s);
+}
 void uart_hex(uint32_t v){char s[9];snprintf(s,sizeof s,"%08x",v);uart_puts(s);}
 int tuner_read_register(unsigned bank,unsigned reg,uint8_t *v){
     assert(bank==0x61 && (reg==0x84 || reg==0xf3 || reg==0xf4 || reg==0xf5));
@@ -17,7 +25,7 @@ int tuner_read_register(unsigned bank,unsigned reg,uint8_t *v){
 int tuner_write_register(unsigned bank,unsigned reg,uint8_t v){
     assert(bank==0x61 && (reg==0x84 || reg==0xf3));ops++;writes++;
     if(persistent_restore && reg==0x84 && v==0x80)return -1;
-    if(reg==0x84){assert(regs[0xf3]==0xe1);regs[reg]=v;}
+    if(reg==0x84){selector_writes++;assert(regs[0xf3]==0xe1);regs[reg]=unsupported_selector && v==4?0:v;}
     else {assert(v==0xe0 || v==0xe3);regs[reg]=v==0xe3?0xe1:v;}
     return ops==fail_at?-1:0; /* Accepted write followed by transport error. */
 }
@@ -29,25 +37,45 @@ int tuner_read_burst_restart(unsigned bank,unsigned reg,uint8_t *bytes,unsigned 
 }
 static void reset(void){
     memset(regs,0,sizeof regs);regs[0xf3]=0xe0;regs[0xf4]=2;regs[0xf5]=0x98;regs[0x84]=0x80;
-    ops=writes=0;output[0]=0;
+    ops=writes=selector_writes=0;output[0]=0;
+    times=pauses=0;
 }
 int main(void){
     unsigned total=0;
-    for(unsigned fail=0;!fail || fail<=total;fail++){
-        reset();fail_at=fail;tuner_monitor_window_probe();
-        if(!fail){total=ops;assert(strstr(output,"status=read-restored-unclassified"));
+    for(unsigned updates=0;updates<2;updates++){
+      total=0;
+      for(unsigned fail=0;!fail || fail<=total;fail++){
+        reset();fail_at=fail;
+        if(updates)tuner_monitor_window_updates();else tuner_monitor_window_probe();
+        if(!fail){total=ops;assert(selector_writes==(updates?209:5));assert(strstr(output,"status=read-restored-unclassified"));
             assert(strstr(output,"phase=00000001 index=00000000 selector=00000000 ba=00000000 bb=00000055"));
             assert(strstr(output,"phase=00000002 index=00000000 selector=00000001 ba=00000001 bb=00000054"));
             assert(strstr(output,"phase=00000003 index=00000000 selector=00000002 ba=00000002 bb=00000057"));
             assert(strstr(output,"phase=00000004 index=00000000 selector=00000003 ba=00000003 bb=00000056"));}
         assert(regs[0x84]==0x80 && regs[0xf3]==0xe0 && regs[0xf4]==2 && regs[0xf5]==0x98);
         /* Recovery-only transient failures may still produce success. */
+      }
+      printf("PASS: monitor updates=%u, %u uncertain I/O failures\n",updates,total);
     }
     reset();fail_at=0;regs[0xf3]=0x23;tuner_monitor_window_probe();
     assert(!writes && strstr(output,"unexpected-state"));
     reset();short_read=1;tuner_monitor_window_probe();
     assert(!writes && strstr(output,"baseline-read-failed"));short_read=0;
+    reset();unsupported_selector=1;tuner_monitor_window_updates();
+    assert(strstr(output,"MONWIN block phase=0000000d requested=00000004"));
+    assert(!strstr(output,"MONWIN block phase=0000000e"));
+    assert(regs[0x84]==0x80 && regs[0xf3]==0xe0 && strstr(output,"read-failed-restored"));
+    unsupported_selector=0;
     reset();persistent_restore=1;tuner_monitor_window_probe();
     assert(regs[0xf3]==0xe1 && strstr(output,"restore-failed-reinitialize-required"));
     printf("PASS: monitor window %u uncertain I/O failures, finite phases, guard, short read and persistent restore halt\n",total);
+    persistent_restore=0;
+    total=0;
+    for(unsigned fail=0;!fail || fail<=total;fail++){
+        reset();fail_at=fail;tuner_monitor_window_timing();
+        if(!fail){total=ops;assert(times==256 && pauses==30 && selector_writes==39);
+            assert(strstr(output,"MONWIN time phase=00000007 index=0000000f"));}
+        assert(regs[0x84]==0x80 && regs[0xf3]==0xe0 && regs[0xf4]==2 && regs[0xf5]==0x98);
+    }
+    printf("PASS: buffered monitor timing, %u uncertain I/O failures, 128 timestamped rows and 30 pauses\n",total);
 }
