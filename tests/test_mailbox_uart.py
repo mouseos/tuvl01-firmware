@@ -17,6 +17,26 @@ class Fake:
         assert predicate(s);return s
 
 class MailboxUART(unittest.TestCase):
+    def test_new_stock_store_candidate_indices_are_appended(self):
+        self.assertEqual(m.KNOWN_OPERANDS[13:],(0x0f0e,0x0ffe,0x1ff3))
+        for operand,index in zip(m.KNOWN_OPERANDS[13:],range(13,16)):
+            t=Fake('MAILBOX probe end status=read-restored-unclassified-reinitialize-required')
+            with mock.patch.object(m,'capture',return_value=(b'',{'frames':0})):
+                m.probe(t,pathlib.Path('unused'),operand=operand)
+            self.assertEqual(t.sent[2],bytes([0x84,index]))
+    def test_capture_failure_does_not_erase_probe_error_or_uart_check(self):
+        t=Fake(TimeoutError('mailbox timeout'));r={}
+        with mock.patch.object(m,'capture',side_effect=RuntimeError('capture failed')):
+            with self.assertRaisesRegex(RuntimeError,'capture failed'):
+                m.probe(t,pathlib.Path('unused'),r,operand=0x0f0e)
+        self.assertEqual(r['probe_error'],'mailbox timeout')
+        self.assertEqual(r['capture_error'],'capture failed')
+        self.assertTrue(r['uart_responding'])
+    def test_demod_snapshot_boundaries(self):
+        t=Fake('MAILBOX probe end status=read-restored-unclassified-reinitialize-required')
+        with mock.patch('tuner_monitor_state_control.snapshot',side_effect=[{'61:97':x} for x in (12,76,116,204)]), mock.patch.object(m,'capture',return_value=(b'',{'frames':0})):
+            r=m.probe(t,pathlib.Path('unused'),operand=0x1ff3,snapshot_state=True)
+        self.assertEqual([r[k]['61:97'] for k in ('state_before_probe','state_after_probe','state_after_reload','state_after_capture')],[12,76,116,204])
     def test_selected_operand_lifecycle_and_rejection(self):
         cases=['MAILBOX probe end status=read-restored-unclassified-reinitialize-required',
                'MAILBOX probe end status=read-failed-restored-reinitialize-required',TimeoutError('probe')]

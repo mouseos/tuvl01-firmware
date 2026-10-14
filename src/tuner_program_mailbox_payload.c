@@ -6,9 +6,12 @@
  * trailing byte-XOR correction. All 30 stock records have byte XOR zero.
  * Caller must halt, select 0298 and arm transfer. No control reads here. */
 uint16_t tuner_program_mailbox_known_operand(unsigned index){
-    /* Observed C4/C5 operand motifs, not an established RAM map. */
+    /* Observed C0/C4/C5 operand motifs, not an established RAM map.
+     * The final three are store-only candidates; C5 read semantics at
+     * those targets require physical validation. Keep prior indices. */
     static const uint16_t known[]={0x0f05,0x0f06,0x0f07,0x0f08,0x0f09,
-        0x0f0a,0x0f0b,0x0f0c,0x0f0d,0x0fff,0x1ff0,0x1ff1,0x1ff2};
+        0x0f0a,0x0f0b,0x0f0c,0x0f0d,0x0fff,0x1ff0,0x1ff1,0x1ff2,
+        0x0f0e,0x0ffe,0x1ff3};
     return index<sizeof known/sizeof known[0]?known[index]:0;
 }
 int tuner_program_mailbox_write_record(uint16_t operand,uint8_t *expected){

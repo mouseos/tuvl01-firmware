@@ -109,13 +109,18 @@ int main(void){
     assert(!ops && !writes && strstr(output,"operand-transport-timeout"));
     reset();assert(!tuner_program_mailbox_operand(0x1234) && !ops && !writes);
     reset();fail_at=0;tuner_program_mailbox_sweep();
-    assert(bursts==13*22 && !memcmp(memory+0x298,pseq_bytes+607,1304));
-    assert(strstr(output,"MAILBOX sweep completed=0000000d"));
+    assert(bursts==16*22 && !memcmp(memory+0x298,pseq_bytes+607,1304));
+    assert(strstr(output,"MAILBOX sweep completed=00000010"));
     assert(strstr(output,"MAILBOX sweep end status=read-restored-unclassified-reinitialize-required"));
     reset();fail_at=40;tuner_program_mailbox_sweep();
     assert(strstr(output,"MAILBOX sweep completed=00000000"));
     assert(strstr(output,"MAILBOX sweep end status=failed-reinitialize-required"));
     assert(!memcmp(memory+0x298,pseq_bytes+607,1304));
+    for(unsigned index=13;index<16;index++){
+        reset();fail_at=0;uart_index=index;tuner_program_mailbox_select();
+        assert(bursts==22 && !memcmp(memory+0x298,pseq_bytes+607,1304));
+        assert(strstr(output,"status=read-restored-unclassified"));
+    }
     reset();persistent_restore=1;tuner_program_mailbox_probe();
     assert(regs[0xf3]==0xe1 && strstr(output,"restore-failed-reinitialize-required"));
     printf("PASS: mailbox uncertain-write restoration, %u single failure positions, address guard and persistent restore failure\n",total);
