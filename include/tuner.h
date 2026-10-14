@@ -24,6 +24,7 @@ void tuner_d4_window_live_selected(unsigned index);
 void tuner_d4_window_live_select(void);
 void tuner_d4_window_live_experimental(unsigned index);
 void tuner_d4_window_experimental_select(void);
+void tuner_d4_window_live_operand02(void);
 int tuner_program_mailbox_original_valid(void);
 uint16_t tuner_program_mailbox_known_operand(unsigned index);
 int tuner_program_mailbox_write_record(uint16_t operand,uint8_t *expected);

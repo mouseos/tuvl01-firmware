@@ -58,18 +58,26 @@ def observations(raw):
     live_fields=('phase','index','selector','requested','first','data','last','before','after','selected')
     live=rb'^D4LIVE sample '+rb' '.join(key.encode()+rb'=([0-9a-f]{8})' for key in live_fields)+rb'\r?$'
     live_readback=readback.replace(b'D4WIN',b'D4LIVE')
+    restore_fields=('attempt','requested','write_ok','read_ok','observed')
+    restore=rb'^D4LIVE restore '+rb' '.join(key.encode()+rb'=([0-9a-f]{8})' for key in restore_fields)+rb'\r?$'
     return dict(live_rows=[dict(zip(live_fields,[int(x,16) for x in row])) for row in re.findall(live,raw,re.M)],
+        live_restores=[dict(zip(restore_fields,[int(x,16) for x in row])) for row in re.findall(restore,raw,re.M)],
         live_readbacks=[dict(zip(('requested','observed'),[int(x,16) for x in row])) for row in re.findall(live_readback,raw,re.M)],scope='Complete UART rows; scalar and timestamp interpretation unproven',
         rows=[dict(zip(fields,[int(x,16) for x in m])) for m in re.findall(sample,raw,re.M)],
         readbacks=[dict(zip(('requested','observed'),[int(x,16) for x in m])) for m in re.findall(readback,raw,re.M)])
 
-def probe(t,output,report,halted=False,buffered_live=False,buffered_selector=None,experimental_selector=None):
+def probe(t,output,report,halted=False,buffered_live=False,buffered_selector=None,experimental_selector=None,native_operand02=False):
+    if native_operand02:
+        if halted or buffered_live or buffered_selector is not None or experimental_selector is not None:
+            raise ValueError('Choose native operand02 alone')
+        buffered_live=True
+    report['native_operand02']=native_operand02
     if experimental_selector is not None:
         if experimental_selector not in (0,7) or halted or buffered_live or buffered_selector is not None:
             raise ValueError('Choose one experimental field encoding, 0 or 7')
         buffered_live=True
     report['experimental_selector']=experimental_selector
-    report['provenance']='experimental-field-encoding' if experimental_selector is not None else 'native-motifs'
+    report['provenance']='native-067E-operand02-candidate' if native_operand02 else 'experimental-field-encoding' if experimental_selector is not None else 'native-motifs'
     if buffered_selector is not None:
         if buffered_selector not in BUFFERED_SELECTORS or halted or buffered_live:raise ValueError('Choose one native buffered selector')
         buffered_live=True
@@ -82,7 +90,7 @@ def probe(t,output,report,halted=False,buffered_live=False,buffered_selector=Non
     try:
         report['state_before_probe']=snapshot(t)
         prefix='D4LIVE' if buffered_live else 'D4WIN'
-        command=bytes([0x8d,(0,7).index(experimental_selector)]) if experimental_selector is not None else bytes([0x8c,BUFFERED_SELECTORS.index(buffered_selector)]) if buffered_selector is not None else b'\x8b' if buffered_live else b'\x87'
+        command=b'\x8e' if native_operand02 else bytes([0x8d,(0,7).index(experimental_selector)]) if experimental_selector is not None else bytes([0x8c,BUFFERED_SELECTORS.index(buffered_selector)]) if buffered_selector is not None else b'\x8b' if buffered_live else b'\x87'
         t.write(command);t.expect(prefix+' probe start');report['probe_started']=True
         report['probe']=t.wait(lambda s:s.startswith(prefix+' probe end status='),30)
         report['state_after_probe']=snapshot(t)
@@ -112,13 +120,14 @@ def main():
     mode.add_argument('--buffered-live',action='store_true',help='RAM opcode0x8b: six native selectors, 8-row buffers, PSEQ running, strict D4 guards')
     mode.add_argument('--buffered-selector',type=int,choices=BUFFERED_SELECTORS,help='RAM opcode0x8c plus fixed index: one native selection, restore and stop within each probe')
     mode.add_argument('--experimental-selector',type=int,choices=(0,7),help='RAM opcode0x8d: hypothetical D4 bits5:3 encoding, not observed in native patches; no IQ meaning assigned')
+    mode.add_argument('--native-operand02',action='store_true',help='RAM opcode0x8e: fixed D4=02 from native067E operand candidate; opcode28 meaning and IQ relationship unproven')
     a=p.parse_args();a.log.parent.mkdir(parents=True,exist_ok=True)
     a.output_dir.mkdir(parents=True,exist_ok=True);report={'iq_identified':False}
     offset=a.log.stat().st_size if a.log.exists() else 0
     with a.log.open('ab') as log:
         t=Transport(a.port,log)
         try:
-            t.write(b'i');t.expect('UART application');probe(t,a.output_dir/'normal.ts',report,a.halted,a.buffered_live,a.buffered_selector,a.experimental_selector)
+            t.write(b'i');t.expect('UART application');probe(t,a.output_dir/'normal.ts',report,a.halted,a.buffered_live,a.buffered_selector,a.experimental_selector,a.native_operand02)
         except Exception as error:report['error']=str(error);raise
         finally:
             t.ser.close();log.flush();report['observations']=observations(a.log.read_bytes()[offset:])

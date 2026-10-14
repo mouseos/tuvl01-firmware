@@ -4,7 +4,7 @@
 #include <string.h>
 #include "tuner.h"
 static uint8_t regs[256];
-static unsigned ops,fail_at,writes,times,acquiring,ignore_selection,persistent_restore,race;
+static unsigned ops,fail_at,writes,times,acquiring,ignore_selection,persistent_restore,race,ignore_restore;
 static char output[65536];
 static int uart_index=-1;static uint32_t ticks;
 int uart_getc(void){int value=uart_index;uart_index=-1;return value;}
@@ -25,9 +25,9 @@ int tuner_read_register(unsigned bank,unsigned reg,uint8_t *value){
 int tuner_write_register(unsigned bank,unsigned reg,uint8_t value){
     /* The live entry point never halts PSEQ or writes program addresses. */
     assert(bank==0x61 && reg==0xd4 && regs[0xf3]==0xe0);ops++;writes++;
-    assert(value==0x0e || value==0x2e || value==0x36 || value==0x16 || value==0x1e || value==0x26 || value==0x06 || value==0x3e);
+    assert(value==0x0e || value==0x2e || value==0x36 || value==0x16 || value==0x1e || value==0x26 || value==0x06 || value==0x3e || value==2);
     if(persistent_restore && writes>1 && value==0x1e)return -1;
-    if(!ignore_selection || value==0x1e)regs[reg]=value;
+    if((!ignore_selection || value==0x1e) && !(ignore_restore && writes>1 && value==0x1e))regs[reg]=value;
     return ops==fail_at?-1:0; /* Accepted before an uncertain error. */
 }
 static void reset(void){
@@ -86,5 +86,23 @@ int main(void){
     assert(strstr(output,"read-failed-restored") && regs[0xd4]==0x1e);ignore_selection=0;
     reset();race=1;tuner_d4_window_live_experimental(1);
     assert(strstr(output,"selected=00000000") && strstr(output,"read-failed-restored") && regs[0xd4]==0x1e);race=0;
+    unsigned operand_total=0;
+    for(unsigned fail=0;!fail || fail<=operand_total;fail++){
+        reset();fail_at=fail;tuner_d4_window_live_operand02();
+        if(!fail){operand_total=ops;assert(times==48 && writes==2);
+            assert(strstr(output,"provenance=native-067E-operand02-candidate"));
+            assert(strstr(output,"phase=00000009 index=00000007 selector=00000000 requested=00000002"));
+            assert(strstr(output,"restore attempt=00000000 requested=0000001e write_ok=00000001 read_ok=00000001 observed=0000001e"));}
+        assert(regs[0xd4]==0x1e && regs[0xf3]==0xe0 && regs[0xf4]==2 && regs[0xf5]==0x98);
+    }
+    reset();fail_at=0;ignore_selection=1;tuner_d4_window_live_operand02();
+    assert(strstr(output,"requested=00000002 observed=0000001e") && strstr(output,"read-failed-restored"));ignore_selection=0;
+    reset();persistent_restore=1;tuner_d4_window_live_operand02();
+    assert(strstr(output,"restore attempt=00000001 requested=0000001e write_ok=00000000 read_ok=00000000 observed=ffffffff"));
+    assert(strstr(output,"restore-failed-reinitialize-required"));persistent_restore=0;
+    reset();ignore_restore=1;tuner_d4_window_live_operand02();
+    assert(strstr(output,"restore attempt=00000001 requested=0000001e write_ok=00000001 read_ok=00000001 observed=00000002"));
+    assert(strstr(output,"restore-failed-reinitialize-required") && regs[0xd4]==2);ignore_restore=0;
+    printf("PASS: native operand02, %u uncertain failures/24 rows; buffered restore evidence\n",operand_total);
 
 }

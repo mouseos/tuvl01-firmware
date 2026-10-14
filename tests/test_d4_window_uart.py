@@ -9,6 +9,22 @@ class UART:
     def expect(self,line):return line
 
 class D4Window(unittest.TestCase):
+    def test_native_operand02_routes_and_restoration_evidence(self):
+        for status in ('read-restored-unclassified-reinitialize-required','restore-failed-reinitialize-required'):
+            t=UART();r={};result='D4LIVE probe end status='+status;t.wait=lambda predicate,timeout:result
+            with mock.patch.object(m,'normal',return_value='SERVE end status=ready') as reload, mock.patch.object(m,'snapshot',return_value={}), mock.patch.object(m,'capture',return_value=(b'',{})):
+                if status.startswith('read-restored'):m.probe(t,pathlib.Path('unused'),r,native_operand02=True)
+                else:
+                    with self.assertRaises(RuntimeError):m.probe(t,pathlib.Path('unused'),r,native_operand02=True)
+                self.assertEqual(reload.call_count,2)
+            self.assertEqual(t.sent,[b'\x8e',b'i']);self.assertEqual(r['provenance'],'native-067E-operand02-candidate')
+        for kwargs in ({'halted':True},{'buffered_live':True},{'buffered_selector':2},{'experimental_selector':0}):
+            t=UART()
+            with self.assertRaises(ValueError):m.probe(t,pathlib.Path('unused'),{},native_operand02=True,**kwargs)
+            self.assertEqual(t.sent,[])
+        raw=b'D4LIVE restore attempt=00000000 requested=0000001e write_ok=00000001 read_ok=00000001 observed=00000002\nD4LIVE restore attempt=00000001 requested=0000001e write_ok=00000000 read_ok=00000000 observed=ffffffff\nD4LIVE restore attempt=RTOS\n'
+        rows=m.observations(raw)['live_restores'];self.assertEqual(len(rows),2)
+        self.assertEqual(rows[0]['observed'],2);self.assertEqual(rows[1]['observed'],0xffffffff)
     def test_experimental_selection_is_separate_and_always_reloads(self):
         for index,selector in enumerate((0,7)):
             for status in ('read-restored-unclassified-reinitialize-required','read-failed-restored-reinitialize-required'):
