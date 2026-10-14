@@ -1,0 +1,49 @@
+# HTV31のチューナーログ入口とIQ調査
+
+2026-10-14、既存APK調査の未確認範囲だったDEX側のnative宣言を確認し、FsDtvAppのログ制御入口をJNIのIPC要求まで追った。TUVL01のMN885521に直接移植できる設定ではなく、同チップ搭載機のメーカーソフトにある調査候補である。IQ信号源・形式・符号・レートは未確認。実機操作・Flash変更なし、Wi-Fiチップは解析対象外。
+
+## DEXの有限監査
+
+```console
+python tools/apk_tuner_dex_audit.py --apk-root ../work --output dex-audit.json
+```
+
+623 APK、classes.dexおよびclasses2.dex以降660エントリ、SHA256重複排除後593 DEX。DEXヘッダー・バイト順・テーブル境界・LEB128境界を確認し、class_dataのdirect/virtual method列からaccess flagのnative=0100を持つ宣言を列挙した。重複排除後のnative宣言数は25768。parseエラー0、128MiB超スキップ0。
+
+宣言のclassまたはmethodにtuner/dtv/isdb/oneseg/fullseg/mn885/pseqがあるものだけを記録し、英数字等の識別子文字に限定する。任意のDEX文字列は出力しない。全Javaコード、呼出しグラフ、動的ロード、フィルター外の名前、JNI実装全体、他のDEX形式の監査ではない。ネイティブ宣言名にIQ取得が現れないことからチップ機能の不存在を結論しない。
+
+最初の列挙パターンがclasses10/11.dexを除外していたことを確認し、修正後に全APKを再解析した。追加対象はFacebook_Clientの2エントリで、最終660/593の数値には含まれる。未確認範囲を隠して初回658/591を最終値にはしない。
+
+一致したAPKはHTV31 1.08/1.11/2.44のFsDtvApp、各89宣言。DtvServerProxyが84、DtvBmlServerProxyが5。1.08/1.11のDEX SHA256は`9b90a3ccfd3a6e96117d1dddeaa33b706bf39abf36ae816b9e6d4833625f4d01`、2.44は`941c0eee259043626b17ab002b789132a97606e4b8505c3228c478c84c81871d`。
+
+デバッグ関連の候補はDtvSvLib_SetTunerLog / DtvSvLib_GetTunerLogStatus / DtvSvLib_ControlErrBit / DtvSvLib_ControlIntLNA。最後の2つは名称だけでADC/IQ経路と解釈しない。今回はログ2関数を追った。
+
+公開パーサーで2.44の実DEXの89宣言とログ2宣言を再取得し、独立したJNI表の名称とも照合。短すぎるDEX2ケース・異常に大きいmethod table1ケースの拒否を確認した。APKそのものや全宣言の原ログは公開しない。
+
+## JNIからサーバーへの要求
+
+一次資料はHTV31 2.44のsystem/lib/libDtv_jni.so、SHA256 `448a851a3353680379e256b128673190f7c54b09dfdba38dfde35b3fb3deac0b`。ARM32 ELF、ELF仮想アドレスで記載する。1.08/1.11版は別SHA256 `db6e1a7c54394928764c0e76d31b3a09e9411dda4f18e58946694bc6dda2600d`であり、以下のアドレスをそのまま適用しない。
+
+| 宣言 | 登録表候補のアドレス | Java署名 | Thumb関数ポインタ / 命令開始 |
+| --- | --- | --- | --- |
+| DtvSvLib_SetTunerLog | 402F0 | (II) → BG_TE_DTVSVLIB_RESULT | C319 / C318 |
+| DtvSvLib_GetTunerLogStatus | 402FC | (I) → BG_TE_DTVSVLIB_RESULT | C21D / C21C |
+
+表のname/signature/functionの3ポインタと、実際の関数が引数をパックして返却結果を作る命令を照合した。低bit1はThumb指定。名前は公開dynsymには現れず、raw文字列とデータ表を対応付けた。.rel.dynはAPS2形式で通常のRELテーブルではないため、単純なrelocation parserで解決済みとは主張しない。
+
+両関数はPLT6254を呼び、.rel.pltのシンボルとの照合から`android::DtvSvLibListener::sendEventToServer(int, void*, int, void*, int*)`に対応する。
+
+| 入口 | IPC command | 送信サイズ | 命令上の根拠 |
+| --- | --- | --- | --- |
+| SetTunerLog | 1000001F | 4 bytes | C3D8のr1 literal、C3DAのr3=4、C3E0のcall |
+| GetTunerLogStatus | 10000020 | 2 bytes | C296のr1 literal、C298のr3=2、C29Eのcall |
+
+SetはC356〜C35Eで第2Java引数−1をunsignedで1と比較し、1/2だけを受け付ける。1=開始/2=停止という意味はまだ未確認。C35Aで第1Java引数をhalfword、C392で第2引数をbyteとして送信領域へ格納する。4バイト中の残り1バイトの意味はこの範囲では未確認。GetはC254で引数をhalfwordとして2バイトの送信領域へ格納する。引数の名称・ログ種別は推測で補完しない。
+
+どちらもsendEventToServerの出力ポインタと出力長ポインタに0を渡す命令がある。戻り値を判定してA930の結果オブジェクト作成処理へ進み、Javaの戻り型はBG_TE_DTVSVLIB_RESULT。このJNI関数自身はI/Q配列を直接返す入口としては確認できない。サーバーの非同期処理、別のログファイルやコールバックによるデータ生成まで否定しない。
+
+## 残る追跡
+
+次はdtvserverの1000001F/10000020のディスパッチと処理先を追い、記録内容・下位チューナー呼出し・ログファイル／返却イベントを確認する。HTV31 2.44のdtvserver SHA256は`a31cd4ea9713e6674fb1966ace27950a3d2984f00949d1ed81d45967afeb172b`。1.08/1.11版は`015096d98fed6f27c1275e5c6f04ad5457a0abf241e5a112b64fc461e2c815cc`。同名文字列だけをIQキャプチャ機能と扱わず、実行経路から判断する。
+
+ローカル原証跡はanalysis/firmware/iq-output-memoryのapk-tuner-dex-audit.json、dtv-tuner-log-{symbol-audit,string-audit,jni-map,jni-disassembly,jni-command}.json。逆アセンブル原文・メーカーAPK/ELFは公開しない。TUVL01の最新実機状態は[選択窓の検証記録](mn885521-d4-d5.md)に保持しており、この静的解析でTS品質やIQ取得が回復・完了したとは扱わない。
