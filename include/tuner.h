@@ -11,6 +11,8 @@ void tuner_program_burst_probe(void);
 void tuner_program_release_probe(void);
 void tuner_program_restart_probe(void);
 void tuner_program_address_probe(void);
+void tuner_program_mailbox_probe(void);
+int tuner_program_mailbox_original_valid(void);
 void tuner_pin_capture_probe(void);
 void tuner_pin_test_probe(void);
 void tuner_pin_gpio_selftest(void);

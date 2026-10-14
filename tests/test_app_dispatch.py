@@ -11,6 +11,8 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
 class AppDispatch(unittest.TestCase):
+    def test_program_mailbox_probe_has_its_own_opcode(self):
+        self.assertEqual(self.route(129),{'tuner_program_mailbox_probe':1})
     def test_program_address_probe_has_its_own_opcode(self):
         self.assertEqual(self.route(128),{'tuner_program_address_probe':1})
     def test_tuner_switch_does_not_stop_active_transfers(self):

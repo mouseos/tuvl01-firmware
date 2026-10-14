@@ -441,6 +441,16 @@ static int patch(unsigned index){
     if(((byte>>4)&1)!=raw[count+2]){uart_puts(" status=mismatch\n");return -1;}
     uart_puts(" status=verified\n");return 0;
 }
+int tuner_program_mailbox_original_valid(void){
+    /* Verify the compiled source, not unreadable chip memory. */
+    unsigned off=pseq_records[2].offset,delta=0x4e7-0x298;
+    if(pseq_records[2].bank!=0x61 || pseq_records[2].count!=1304 ||
+       off>sizeof pseq_bytes-3 || pseq_records[2].count>sizeof pseq_bytes-off-3 ||
+       delta+6>pseq_records[2].count)return 0;
+    const uint8_t *p=pseq_bytes+off;
+    return p[0]==2 && p[1]==0x98 && p[2+delta]==0xc5 && p[3+delta]==0x0f &&
+           p[4+delta]==0x0d && p[5+delta]==0x21 && p[6+delta]==0x6d && p[7+delta]==1;
+}
 void tuner_initialize(void){
     uart_puts("TUNER initialize start\n");
     /* Validate every record before changing the board or patch memory. */
