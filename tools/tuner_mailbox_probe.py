@@ -1,6 +1,6 @@
 """Finite experimental PSEQ operand readout, with full normal patch reload.
 
-Requires opcode0x81/0x82 RAM firmware. Runs normal SERVE/default channel14 before
+Requires the corresponding opcode0x81/0x82/0x84/0x88 RAM firmware. Runs normal SERVE/default channel14 before
 and after the diagnostic. This verifies a candidate bridge, not IQ samples.
 """
 import argparse,json,pathlib,re
@@ -19,10 +19,16 @@ def observations(raw):
         if start:
             current={'operand':int(start[3],16),'samples':[],'transfers':[]}
             items.append(current)
+        if line=='MAILBOX probe start source=register-D5 address=00000298 count=00000518':
+            current={'source':'register-D5','samples':[],'transfers':[],'source_rows':[]};items.append(current)
         if current is None:continue
         transfer=re.fullmatch(r'MAILBOX transfer operand=([0-9a-f]{8})',line)
         if transfer:
             parities=[];current['transfers'].append({'operand':int(transfer[1],16),'parity':parities})
+        if line=='MAILBOX transfer source=register-D5':
+            parities=[];current['transfers'].append({'source':'register-D5','parity':parities})
+        source=re.fullmatch(r'MAILBOX source phase=([0-9a-f]{8}) index=([0-9a-f]{8}) d4=([0-9a-f]{8}) d5=([0-9a-f]{8})',line)
+        if source:current.setdefault('source_rows',[]).append(dict(zip(['phase','index','d4','d5'],[int(x,16) for x in source.groups()])))
         parity=re.fullmatch(r'MAILBOX transfer parity index=([0-9a-f]{8}) f8=([0-9a-f]{8}) expected=([0-9a-f]{8})',line)
         if parity:parities.append(dict(zip(['index','f8','expected'],[int(x,16) for x in parity.groups()])))
         sample=re.fullmatch(r'MAILBOX sample phase=([0-9a-f]{8}) index=([0-9a-f]{8}) sub6d=([0-9a-f]{8}) main6d=([0-9a-f]{8})',line)
@@ -37,7 +43,8 @@ def normal(t):
     t.write(b'E');t.wait(lambda s:s.startswith('TS stream end status='),15)
     return result
 
-def probe(t,output,report=None,known_operands=False,operand=None,snapshot_state=False):
+def probe(t,output,report=None,known_operands=False,operand=None,snapshot_state=False,register_d5=False):
+    if register_d5 and (known_operands or operand is not None):raise ValueError('Choose D5 or internal operands')
     if operand is not None and (known_operands or operand not in KNOWN_OPERANDS):
         raise ValueError('Choose one known operand or the sweep')
     if report is None:report={}
@@ -47,10 +54,13 @@ def probe(t,output,report=None,known_operands=False,operand=None,snapshot_state=
     report['known_operands']=known_operands
     report['operand']=operand
     report['snapshot_state']=snapshot_state
+    report['register_d5']=register_d5
     try:
         if snapshot_state:report['state_before_probe']=snapshot(t)
-        t.write(bytes([0x84,KNOWN_OPERANDS.index(operand)]) if operand is not None
+        t.write(b'\x88' if register_d5 else bytes([0x84,KNOWN_OPERANDS.index(operand)]) if operand is not None
                 else b'\x82' if known_operands else b'\x81')
+        if register_d5:
+            t.expect('MAILBOX probe start source=register-D5 address=00000298 count=00000518');report['probe_started']=True
         report['probe']=t.wait(lambda s:s.startswith(prefix),180 if known_operands else 30)
         if snapshot_state:report['state_after_probe']=snapshot(t)
     except Exception as error:
@@ -81,6 +91,7 @@ def main():
     mode=p.add_mutually_exclusive_group()
     mode.add_argument('--known-operands',action='store_true',help='Compare 16 stock operand candidates; restores full record after each')
     mode.add_argument('--operand',type=lambda s:int(s,16),metavar='HEX',help='One known operand, e.g. 0f07, after fresh initialization (opcode0x84)')
+    mode.add_argument('--register-d5',action='store_true',help='Experimental live PSEQ 30 D5 -> 21 6D bridge; six-byte slot, opcode0x88')
     p.add_argument('--snapshot-state',action='store_true',help='Record 13 known demod/control registers at four lifecycle boundaries; not simultaneous')
     a=p.parse_args();a.log.parent.mkdir(parents=True,exist_ok=True)
     if a.operand is not None and a.operand not in KNOWN_OPERANDS:p.error('Unknown operand')
@@ -91,7 +102,7 @@ def main():
         report={'iq_identified':False}
         try:
             t.write(b'i');t.expect('UART application')
-            probe(t,a.output_dir/'normal.ts',report,a.known_operands,a.operand,a.snapshot_state)
+            probe(t,a.output_dir/'normal.ts',report,a.known_operands,a.operand,a.snapshot_state,a.register_d5)
             print(json.dumps(report,indent=2))
         except Exception as error:
             report['error']=str(error)

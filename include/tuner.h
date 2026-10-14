@@ -22,6 +22,8 @@ void tuner_d4_window_halted(void);
 int tuner_program_mailbox_original_valid(void);
 uint16_t tuner_program_mailbox_known_operand(unsigned index);
 int tuner_program_mailbox_write_record(uint16_t operand,uint8_t *expected);
+int tuner_program_mailbox_write_d5_record(uint8_t *expected);
+void tuner_program_mailbox_d5(void);
 void tuner_pin_capture_probe(void);
 void tuner_pin_test_probe(void);
 void tuner_pin_gpio_selftest(void);

@@ -17,6 +17,18 @@ class Fake:
         assert predicate(s);return s
 
 class MailboxUART(unittest.TestCase):
+    def test_d5_register_source_has_distinct_opcode_and_provenance(self):
+        t=Fake('MAILBOX probe end status=read-restored-unclassified-reinitialize-required')
+        with mock.patch.object(m,'capture',return_value=(b'',{})):
+            r=m.probe(t,pathlib.Path('unused'),register_d5=True)
+        self.assertEqual(t.sent[2],b'\x88');self.assertTrue(r['probe_started'])
+        raw=b'MAILBOX probe start source=register-D5 address=00000298 count=00000518\nMAILBOX transfer source=register-D5\nMAILBOX source phase=00000001 index=00000000 d4=0000000e d5=00000035\n'
+        item=m.observations(raw)['items'][0]
+        self.assertNotIn('operand',item)
+        self.assertEqual(item['source'],'register-D5')
+        self.assertEqual(item['source_rows'],[{'phase':1,'index':0,'d4':0xe,'d5':0x35}])
+        self.assertEqual(item['transfers'][0]['source'],'register-D5')
+        with self.assertRaises(ValueError):m.probe(t,pathlib.Path('unused'),register_d5=True,operand=0x0f0e)
     def test_new_stock_store_candidate_indices_are_appended(self):
         self.assertEqual(m.KNOWN_OPERANDS[13:],(0x0f0e,0x0ffe,0x1ff3))
         for operand,index in zip(m.KNOWN_OPERANDS[13:],range(13,16)):

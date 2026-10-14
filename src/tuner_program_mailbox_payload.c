@@ -14,27 +14,38 @@ uint16_t tuner_program_mailbox_known_operand(unsigned index){
         0x0f0e,0x0ffe,0x1ff3};
     return index<sizeof known/sizeof known[0]?known[index]:0;
 }
-int tuner_program_mailbox_write_record(uint16_t operand,uint8_t *expected){
-    unsigned allowed=0;
-    for(unsigned n=0;tuner_program_mailbox_known_operand(n);n++)
-        if(operand==tuner_program_mailbox_known_operand(n))allowed=1;
-    if(!expected || !allowed ||
-       !tuner_program_mailbox_original_valid())return -1;
+static int write_slot(const uint8_t slot[6],uint8_t *expected){
+    if(!expected || !tuner_program_mailbox_original_valid())return -1;
     unsigned off=pseq_records[2].offset,count=pseq_records[2].count,byte_xor=0;
     const uint8_t *raw=pseq_bytes+off;
     for(unsigned i=0;i<count;i++)byte_xor^=raw[2+i];
     if(byte_xor || raw[count+2] || raw[count]!=1 || raw[count+1]!=0x2b)return -1;
-    uint8_t correction=(operand>>8)^(operand&255)^0x0f^0x0d;
+    unsigned delta=0x4e7-0x298;uint8_t correction=0;
+    for(unsigned n=0;n<6;n++)correction^=raw[2+delta+n]^slot[n];
     *expected=0; /* Match the stock zero-XOR record's F8 bit4, not popcount. */
     for(unsigned pos=0;pos<count;){
         uint8_t bytes[128];unsigned chunk=count-pos;
         if(chunk>sizeof bytes)chunk=sizeof bytes;
         for(unsigned n=0;n<chunk;n++)
             bytes[n]=pos+n==count-1?(raw[2+pos+n]^correction):
-                     pos+n==0x4e8-0x298?(operand>>8):
-                     pos+n==0x4e9-0x298?operand:raw[2+pos+n];
+                     pos+n>=delta && pos+n<delta+6?slot[pos+n-delta]:raw[2+pos+n];
         if(tuner_write_burst(0x61,0xf6,bytes,chunk))return -1;
         pos+=chunk;
     }
     return 0;
+}
+int tuner_program_mailbox_write_record(uint16_t operand,uint8_t *expected){
+    unsigned allowed=0;
+    for(unsigned n=0;tuner_program_mailbox_known_operand(n);n++)
+        if(operand==tuner_program_mailbox_known_operand(n))allowed=1;
+    if(!allowed)return -1;
+    const uint8_t slot[]={0xc5,operand>>8,operand,0x21,0x6d,1};
+    return write_slot(slot,expected);
+}
+int tuner_program_mailbox_write_d5_record(uint8_t *expected){
+    /* Observed 30 D5 register-read candidate followed by the existing
+     * 21 6D mailbox write/01 return. Final 01 pads the six-byte slot;
+     * adjacent initialization at 04ED remains byte-for-byte unchanged. */
+    const uint8_t slot[]={0x30,0xd5,0x21,0x6d,1,1};
+    return write_slot(slot,expected);
 }
