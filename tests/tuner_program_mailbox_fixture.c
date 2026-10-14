@@ -8,8 +8,12 @@ static uint8_t regs[256],memory[8192];
 static unsigned ops,fail_at,cursor,parity,writes,source_ok=1,ignore_address,persistent_restore;
 static unsigned restore_start;
 static unsigned delayed_parity,persistent_changed_parity,parity_reads;
+static unsigned payload_expected,halt_writes;
 static char output[16384];
-void uart_puts(const char *s){assert(strlen(output)+strlen(s)<sizeof output);strcat(output,s);}
+void uart_puts(const char *s){
+    if(!strcmp(s,"MAILBOX transfer operand="))halt_writes=0;
+    assert(strlen(output)+strlen(s)<sizeof output);strcat(output,s);
+}
 void uart_hex(uint32_t v){
     const char *marker="MAILBOX transfer operand=";size_t n=strlen(output),m=strlen(marker);
     if(v==0x0d && n>=m && !strcmp(output+n-m,marker) && !restore_start)restore_start=ops+1;
@@ -17,6 +21,7 @@ void uart_hex(uint32_t v){
 }
 int tuner_program_mailbox_original_valid(void){return source_ok;}
 int tuner_read_register(unsigned bank,unsigned reg,uint8_t *v){
+    assert(!payload_expected); /* No register read between arm and payload. */
     assert(bank==0x61 || (bank==0x60 && reg==0x6d));
     ops++;if(ops==fail_at)return -1;
     *v=reg==0xf8?parity<<4:reg==0x6d?(bank==0x60?7:memory[0x4e9]==0x0c?42:8):regs[reg];
@@ -28,10 +33,12 @@ int tuner_read_register(unsigned bank,unsigned reg,uint8_t *v){
     return 0;
 }
 int tuner_write_register(unsigned bank,unsigned reg,uint8_t v){
+    if(payload_expected){assert(reg==0xf6);payload_expected=0;}
     assert(bank==0x61 && reg>=0xf3 && reg<=0xf6);ops++;writes++;
     if(reg==0xf3){
         assert(v==0xe0 || v==0xe3);regs[reg]=v==0xe3?0xe1:v;
         if(v==0xe3){cursor=((unsigned)regs[0xf4]<<8)|regs[0xf5];parity=parity_reads=0;}
+        if(v==0xe3 && ++halt_writes==2)payload_expected=ops!=fail_at;
     }else if(reg==0xf6){
         assert(cursor>=0x4e7 && cursor<=0x4e9 && regs[0xf3]==0xe1);
         if(persistent_restore && v==0x0d)return -1;
@@ -49,7 +56,7 @@ int tuner_write_burst(unsigned bank,unsigned reg,const uint8_t *bytes,unsigned c
 static void reset(void){
     memset(regs,0,sizeof regs);regs[0xf3]=0xe0;regs[0xf4]=2;regs[0xf5]=0x98;
     memory[0x4e7]=0xc5;memory[0x4e8]=0x0f;memory[0x4e9]=0x0d;
-    ops=writes=cursor=parity=restore_start=0;output[0]=0;
+    ops=writes=cursor=parity=restore_start=payload_expected=halt_writes=0;output[0]=0;
 }
 int main(void){
     unsigned total=0,before_restore=0;

@@ -20,11 +20,12 @@ static int mailbox_transfer(uint8_t operand){
     if(tuner_read_register(0x61,0xf5,&v))return -1;
     uart_puts("MAILBOX transfer address f5=");uart_hex(v);uart_puts("\n");
     if(v!=0xe7)return -1;
-    if(tuner_write_register(0x61,0xf3,0xe3) || tuner_read_register(0x61,0xf3,&v))return -1;
-    uart_puts("MAILBOX transfer armed f3=");uart_hex(v);uart_puts("\n");
-    if(v!=0xe1 && v!=0xe3)return -1;
     const uint8_t payload[3]={0xc5,0x0f,operand};
+    /* Stock loader arms F3 then writes F6 without an intervening read.
+     * Write acknowledgement is not verification of the resulting F3 value. */
+    if(tuner_write_register(0x61,0xf3,0xe3))return -1;
     if(tuner_write_burst(0x61,0xf6,payload,3))return -1;
+    uart_puts("MAILBOX transfer arm-payload writes acknowledged\n");
     /* C5/0F/0C has even bit parity; C5/0F/0D has odd parity. */
     unsigned matches=0;
     /* Eight finite observations, spaced by UART output and I2C latency.
