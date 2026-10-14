@@ -17,6 +17,21 @@ class Fake:
         assert predicate(s);return s
 
 class MailboxUART(unittest.TestCase):
+    def test_selected_operand_lifecycle_and_rejection(self):
+        cases=['MAILBOX probe end status=read-restored-unclassified-reinitialize-required',
+               'MAILBOX probe end status=read-failed-restored-reinitialize-required',TimeoutError('probe')]
+        for result in cases:
+            t=Fake(result)
+            with mock.patch.object(m,'capture',return_value=(b'',{'frames':0})):
+                if result==cases[0]:m.probe(t,pathlib.Path('unused'),operand=0x0f07)
+                else:
+                    with self.assertRaises((RuntimeError,TimeoutError)):m.probe(t,pathlib.Path('unused'),operand=0x0f07)
+            self.assertEqual(t.ready,2)
+            self.assertEqual(t.sent,[bytes([16]),b'E',bytes([0x84,2]),bytes([16]),b'E',b'i'])
+        t=Fake(cases[0])
+        with self.assertRaises(ValueError):m.probe(t,pathlib.Path('unused'),operand=0x1234)
+        with self.assertRaises(ValueError):m.probe(t,pathlib.Path('unused'),known_operands=True,operand=0x0f07)
+        self.assertEqual(t.sent,[])
     def test_complete_rows_and_operand_identity(self):
         raw=b'''MAILBOX probe start address=00000298 count=00000518 operand=00001ff0
 MAILBOX transfer operand=00001ff0

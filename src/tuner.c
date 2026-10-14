@@ -453,7 +453,8 @@ int tuner_program_mailbox_original_valid(void){
        delta+6>pseq_records[2].count)return 0;
     const uint8_t *p=pseq_bytes+off;
     return p[0]==2 && p[1]==0x98 && p[2+delta]==0xc5 && p[3+delta]==0x0f &&
-           p[4+delta]==0x0d && p[5+delta]==0x21 && p[6+delta]==0x6d && p[7+delta]==1;
+           p[4+delta]==0x0d && p[5+delta]==0x21 && p[6+delta]==0x6d && p[7+delta]==1 &&
+           p[pseq_records[2].count]==1 && p[pseq_records[2].count+1]==0x2b;
 }
 void tuner_initialize(void){
     uart_puts("TUNER initialize start\n");

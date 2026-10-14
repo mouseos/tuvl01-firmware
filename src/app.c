@@ -195,6 +195,7 @@ static void usb_task(void *p) {
         if(c==129)tuner_program_mailbox_probe();
         if(c==130)tuner_program_mailbox_sweep();
         if(c==131)tuner_monitor_window_probe();
+        if(c==132)tuner_program_mailbox_select();
         if(c=='`')tuner_pin_capture_probe();
         if(c=='-')tuner_pin_test_probe();
         if(c==',')tuner_pin_gpio_selftest();

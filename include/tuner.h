@@ -13,6 +13,8 @@ void tuner_program_restart_probe(void);
 void tuner_program_address_probe(void);
 void tuner_program_mailbox_probe(void);
 void tuner_program_mailbox_sweep(void);
+void tuner_program_mailbox_select(void);
+int tuner_program_mailbox_operand(uint16_t operand);
 void tuner_monitor_window_probe(void);
 int tuner_program_mailbox_original_valid(void);
 uint16_t tuner_program_mailbox_known_operand(unsigned index);

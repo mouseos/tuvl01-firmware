@@ -37,7 +37,9 @@ int main(void){
         reset();fail_at=fail;tuner_monitor_window_probe();
         if(!fail){total=ops;assert(strstr(output,"status=read-restored-unclassified"));
             assert(strstr(output,"phase=00000001 index=00000000 selector=00000000 ba=00000000 bb=00000055"));
-            assert(strstr(output,"phase=00000002 index=00000000 selector=00000003 ba=00000003 bb=00000056"));}
+            assert(strstr(output,"phase=00000002 index=00000000 selector=00000001 ba=00000001 bb=00000054"));
+            assert(strstr(output,"phase=00000003 index=00000000 selector=00000002 ba=00000002 bb=00000057"));
+            assert(strstr(output,"phase=00000004 index=00000000 selector=00000003 ba=00000003 bb=00000056"));}
         assert(regs[0x84]==0x80 && regs[0xf3]==0xe0 && regs[0xf4]==2 && regs[0xf5]==0x98);
         /* Recovery-only transient failures may still produce success. */
     }

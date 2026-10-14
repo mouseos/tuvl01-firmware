@@ -3,7 +3,9 @@
 #include "tuner.h"
 
 /* Known PSEQ motifs select 84=00/03 before reading BA/BB. Neither the
- * selector meaning nor a coherent I/Q pair is established. No patch writes. */
+ * selector meaning nor a coherent I/Q pair is established. Intermediate
+ * values 01/02 are hypotheses, not manufacturer-documented modes.
+ * No patch writes. */
 static int samples(unsigned phase){
     for(unsigned n=0;n<16;n++){
         uint8_t selector,bytes[2];unsigned received=0;
@@ -42,8 +44,8 @@ void tuner_monitor_window_probe(void){
        tuner_read_register(0x61,0xf3,&v) || (v!=0xe1 && v!=0xe3) ||
        tuner_read_register(0x61,0x84,&selector))failed=1;
     if(!failed){
-        const uint8_t modes[2]={0,3};
-        for(unsigned n=0;n<2;n++){
+        const uint8_t modes[4]={0,1,2,3};
+        for(unsigned n=0;n<4;n++){
             touched_selector=1;
             if(tuner_write_register(0x61,0x84,modes[n]) ||
                tuner_read_register(0x61,0x84,&v) || v!=modes[n] || samples(n+1)){
@@ -57,7 +59,7 @@ void tuner_monitor_window_probe(void){
     if(restored && restore(0xf3,control))restored=0;
     if(tuner_read_register(0x61,0xf4,&v) || v!=high)restored=0;
     if(tuner_read_register(0x61,0xf5,&v) || v!=low)restored=0;
-    if(restored && samples(3))failed=1;
+    if(restored && samples(5))failed=1;
     uart_puts(!restored?"MONWIN probe end status=restore-failed-reinitialize-required\n":
               failed?"MONWIN probe end status=read-failed-restored-reinitialize-required\n":
                      "MONWIN probe end status=read-restored-unclassified-reinitialize-required\n");

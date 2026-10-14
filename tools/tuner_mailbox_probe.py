@@ -7,6 +7,8 @@ import argparse,json,pathlib,re
 from uart import Transport
 from tuner_pattern_capture import capture
 from ts_capture import inspect
+KNOWN_OPERANDS=(0x0f05,0x0f06,0x0f07,0x0f08,0x0f09,0x0f0a,0x0f0b,
+                0x0f0c,0x0f0d,0x0fff,0x1ff0,0x1ff1,0x1ff2)
 
 def observations(raw):
     """Keep complete UART rows only; do not repair interleaved/partial rows."""
@@ -34,13 +36,17 @@ def normal(t):
     t.write(b'E');t.wait(lambda s:s.startswith('TS stream end status='),15)
     return result
 
-def probe(t,output,report=None,known_operands=False):
+def probe(t,output,report=None,known_operands=False,operand=None):
+    if operand is not None and (known_operands or operand not in KNOWN_OPERANDS):
+        raise ValueError('Choose one known operand or the sweep')
     if report is None:report={}
     report.update(iq_identified=False,initialization=normal(t))
     prefix='MAILBOX sweep end status=' if known_operands else 'MAILBOX probe end status='
     report['known_operands']=known_operands
+    report['operand']=operand
     try:
-        t.write(b'\x82' if known_operands else b'\x81')
+        t.write(bytes([0x84,KNOWN_OPERANDS.index(operand)]) if operand is not None
+                else b'\x82' if known_operands else b'\x81')
         report['probe']=t.wait(lambda s:s.startswith(prefix),180 if known_operands else 30)
     finally:
         # Even a timed-out or failed probe may have modified chip RAM.
@@ -57,8 +63,11 @@ def main():
     p.add_argument('--port',required=True)
     p.add_argument('--log',required=True,type=pathlib.Path)
     p.add_argument('--output-dir',required=True,type=pathlib.Path)
-    p.add_argument('--known-operands',action='store_true',help='Compare 13 known operand candidates; restores full record after each')
+    mode=p.add_mutually_exclusive_group()
+    mode.add_argument('--known-operands',action='store_true',help='Compare 13 known operand candidates; restores full record after each')
+    mode.add_argument('--operand',type=lambda s:int(s,16),metavar='HEX',help='One known operand, e.g. 0f07, after fresh initialization (opcode0x84)')
     a=p.parse_args();a.log.parent.mkdir(parents=True,exist_ok=True)
+    if a.operand is not None and a.operand not in KNOWN_OPERANDS:p.error('Unknown operand')
     a.output_dir.mkdir(parents=True,exist_ok=True)
     log_offset=a.log.stat().st_size if a.log.exists() else 0
     with a.log.open('ab') as log:
@@ -66,7 +75,7 @@ def main():
         report={'iq_identified':False}
         try:
             t.write(b'i');t.expect('UART application')
-            probe(t,a.output_dir/'normal.ts',report,a.known_operands)
+            probe(t,a.output_dir/'normal.ts',report,a.known_operands,a.operand)
             print(json.dumps(report,indent=2))
         except Exception as error:
             report['error']=str(error)

@@ -10,6 +10,11 @@ static unsigned ops,fail_at,cursor,parity,writes,source_ok=1,ignore_address,pers
 static unsigned restore_start;
 static unsigned delayed_parity,persistent_changed_parity,parity_reads;
 static unsigned payload_expected,halt_writes,current_operand,bursts;
+static int uart_index=-1;
+static uint32_t ticks;
+int uart_getc(void){int v=uart_index;uart_index=-1;return v;}
+uint32_t xTaskGetTickCount(void){return ticks;}
+void vTaskDelay(uint32_t n){ticks+=n;}
 static char output[262144];
 void uart_puts(const char *s){
     if(!strcmp(s,"MAILBOX transfer operand="))halt_writes=0;
@@ -26,7 +31,7 @@ int tuner_read_register(unsigned bank,unsigned reg,uint8_t *v){
     assert(!payload_expected); /* No register read between arm and payload. */
     assert(bank==0x61 || (bank==0x60 && reg==0x6d));
     ops++;if(ops==fail_at)return -1;
-    *v=reg==0xf8?parity<<4:reg==0x6d?(bank==0x60?7:memory[0x4e9]==0x0c?42:8):regs[reg];
+    *v=reg==0xf8?(parity!=0)<<4:reg==0x6d?(bank==0x60?7:memory[0x4e9]==0x0c?42:8):regs[reg];
     if(ignore_address && writes && reg==0xf4)*v=0;
     if(reg==0xf8){
         parity_reads++;
@@ -45,11 +50,13 @@ int tuner_write_register(unsigned bank,unsigned reg,uint8_t v){
     }else if(reg==0xf6){
         assert(cursor>=0x298 && cursor<0x298+1304 && regs[0xf3]==0xe1);
         unsigned offset=cursor-0x298;
-        assert(v==(cursor==0x4e8?current_operand>>8:
+        uint8_t correction=(current_operand>>8)^(current_operand&255)^0x0f^0x0d;
+        assert(v==(offset==1303?(pseq_bytes[607+offset]^correction):
+                   cursor==0x4e8?current_operand>>8:
                    cursor==0x4e9?(current_operand&255):pseq_bytes[607+offset]));
         if(persistent_restore && current_operand==0x0f0d && cursor==0x4e9)return -1;
         memory[cursor++]=v;
-        for(unsigned x=v;x;x>>=1)parity^=x&1;
+        parity^=v;
     }else if(!(ignore_address && reg==0xf4))regs[reg]=v;
     return ops==fail_at?-1:0; /* Write accepted before transport error. */
 }
@@ -93,6 +100,14 @@ int main(void){
     assert(!strstr(output,"MAILBOX sample phase=00000001"));
     assert(strstr(output,"read-failed-restored-reinitialize-required") && memory[0x4e9]==0x0d);
     persistent_changed_parity=0;
+    reset();fail_at=0;uart_index=2;tuner_program_mailbox_select();
+    assert(strstr(output,"MAILBOX transfer operand=00000f07"));
+    assert(strstr(output,"status=read-restored-unclassified") && memory[0x4e9]==0x0d);
+    reset();uart_index=255;tuner_program_mailbox_select();
+    assert(!ops && !writes && strstr(output,"unknown-operand"));
+    reset();uart_index=-1;ticks=0;tuner_program_mailbox_select();
+    assert(!ops && !writes && strstr(output,"operand-transport-timeout"));
+    reset();assert(!tuner_program_mailbox_operand(0x1234) && !ops && !writes);
     reset();fail_at=0;tuner_program_mailbox_sweep();
     assert(bursts==13*22 && !memcmp(memory+0x298,pseq_bytes+607,1304));
     assert(strstr(output,"MAILBOX sweep completed=0000000d"));
