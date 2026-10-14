@@ -47,3 +47,37 @@ SetはC356〜C35Eで第2Java引数−1をunsignedで1と比較し、1/2だけを
 次はdtvserverの1000001F/10000020のディスパッチと処理先を追い、記録内容・下位チューナー呼出し・ログファイル／返却イベントを確認する。HTV31 2.44のdtvserver SHA256は`a31cd4ea9713e6674fb1966ace27950a3d2984f00949d1ed81d45967afeb172b`。1.08/1.11版は`015096d98fed6f27c1275e5c6f04ad5457a0abf241e5a112b64fc461e2c815cc`。同名文字列だけをIQキャプチャ機能と扱わず、実行経路から判断する。
 
 ローカル原証跡はanalysis/firmware/iq-output-memoryのapk-tuner-dex-audit.json、dtv-tuner-log-{symbol-audit,string-audit,jni-map,jni-disassembly,jni-command}.json。逆アセンブル原文・メーカーAPK/ELFは公開しない。TUVL01の最新実機状態は[選択窓の検証記録](mn885521-d4-d5.md)に保持しており、この静的解析でTS品質やIQ取得が回復・完了したとは扱わない。
+
+## サーバー入口から内部タスク要求まで
+
+同じ2.44 dtvserverを読み取り専用で追跡した。SHA256は上記と同一。再現用の固定モチーフ検証を追加した。
+
+```console
+python tools/tuner_log_server_flow.py --server /path/to/htv31-2.44/dtvserver --output server-flow.json
+```
+
+ツールは正確なSHA256・ARM32 little-endian ELFを要求し、PT_LOADでファイルoffsetとVAを変換する。コマンド表候補の値と直前のThumbポインタ、9箇所の直接BL先、内部コマンドliteral、送信サイズの命令を照合する。サーバーを起動せず、完全なディスアセンブラや実行経路の網羅検証でもない。
+
+| JNIコマンド | サーバー表候補 VA / file offset | 直前Thumb pointer / 命令開始 | 要求保存呼出し | 内部イベント候補 |
+| --- | --- | --- | --- | --- |
+| 1000001F | 437A58 / 436A58 | 4B259 / 4B258 | 4B28A → 610AC | 4B29Cで25、4B2A0 → 49134 |
+| 10000020 | 437A74 / 436A74 | 4B309 / 4B308 | 4B33A → 6117C | 4B34Cで26、4B350 → 49134 |
+
+表の前後はコマンド・ポインタ・状態候補の反復構造。表を読むディスパッチャーの全制御条件を解読済みとは扱わない。各入口は[r5+8]の要求領域を保存処理へ渡し、627ECの返り値から3を引いたbyteが0/1の場合にイベント処理を呼ぶ。状態値3/4の名称は不明。保存処理610ACは内部オブジェクト+46Cへ要求wordを保存、6117Cは+470へ保存する候補で、IQ列の格納とは確認できない。
+
+| 後段の処理候補 | 呼出し先 | 組み直した内部要求 | 送信サイズ |
+| --- | --- | --- | --- |
+| 4B6F0（Set、4B726のcall） | 52CAC | 10030024 | 8 bytes |
+| 4B774（Get、4B7AAのcall） | 52DF8 | 10030025 | 2 bytes |
+
+Setの52CACは元message IDを1000001Fと比較（52CE8〜52CFA）。保存要求を63B94で読み戻し（52D00）、要求中byte[2]を32bitへ拡張して送信領域+4へ格納（52D04/52D10）。別のmessage halfword[r7+10]を送信領域先頭へ格納（52CEC/52CF6）。8バイト領域は事前に0で初期化され、52D0Aでサイズ8、52D0Cのliteralからコマンド10030024を渡す。halfwordの意味とモード1/2の開始・停止への対応は未確認。
+
+Getの52DF8はmessage halfword[r5+10]を2バイト領域へ格納（52E2C〜52E34）、52E32のliteralから10030025、52E38でサイズ2。これらの送信領域は設定・要求データであり、チップのIQサンプルを運ぶバッファとして確認されたものではない。
+
+両方とも40DD4へ進む（Set52D14/Get52E3A）。40DD4は63324で宛先関連値を得て、40CC4を経由し、40E46でPLT3DD30を呼ぶ。.rel.pltからcalleeは`DtvSvCom_SendMsg(unsigned long, unsigned long, unsigned long, unsigned long, void*, TS_DTVSV_COM_DATA*)`。同じ関数にはRecvMsgMemFreeへの呼出しもあり、メッセージを運ぶ共通経路と整合する。ここから下位チューナーのレジスタ書込みを実行したという証拠はまだない。
+
+libDtv.soにはDTVSV_MSGID_AIR_SET_TUNER_LOG_REQ / AIR_GET_TUNER_LOG_STATUS_REQと対応するREPLYの名称がある。JNI側にも`BG_EV_DTVSV_SET_TUNER_LOG_REPLY` / `BG_EV_DTVSV_GET_TUNER_LOG_STATUS_REPLY`の非同期返却イベント名がある。名称だけで返却データの型・ログファイルの内容・IQ機能を決めない。次は10030024/25の受信側タスクのdispatcher・処理関数とログ書込み先、reply payloadを追う。
+
+中間の文字列xref探索は候補の位置出しにだけ使用した。ARM.exidxの範囲が複数の小関数をまとめる場合があるため、unwind範囲の開始を個々の関数開始と同一視しない。文字列ロードの候補だけで関数名や完全なフローを確定しない。公開ツールは表ポインタ・直接call・literalの独立照合に限定した。
+
+実資料で全9call先と2内部ID・送信サイズが一致し、誤ったsource hashは拒否されることを確認した。原証跡はdtv-tuner-log-server-{disassembly,send-disassembly,xrefs,flow}.jsonとdtv-tuner-log-{air-symbols,lowercase-strings}.json。原逆アセンブルはローカルだけに保持。今回の調査はログ内容を確定しておらず、IQ信号源・形式・符号・サンプルレートは未確認。実機操作・RAM再転送・Flash保存なし。
