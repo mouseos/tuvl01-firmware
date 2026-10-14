@@ -117,3 +117,41 @@ python tools/tuner_log_server_flow.py --server /path/to/2.44/dtvserver --common 
 追加オプションを省略しても2.44受信側の固定モチーフを検証する。--commonはAIR名称／task IDを追加照合、--comparison-serverは旧版の受付表を照合する。正確な入力SHA256、PT_LOAD対応、命令モチーフ、7追加直接call、3独立表参照、ログ2行と非zero隣接行を検証。実資料3ファイルで成功し、各解析関数が異なるSHA256の入力を拒否することを確認した。ツールは動的検証や完全な逆アセンブラではない。
 
 今回の原証跡はローカルdtv-air-receiver-flow.jsonとdtv-old-{normalization-candidates,air-table-candidates}.json。メーカーELF・原逆アセンブルは公開しない。実機操作・RAM転送・Flash書込みは行っていない。IQ信号源・形式・符号・サンプルレートは引き続き未確認、最新TS品質は未復帰。次はログAPIから離れ、下位チューナーの直接操作経路で出力設定／内部メモリ読出しを探す。
+
+## ARM32下位ライブラリの読出し経路
+
+HTV31 2.44のARM32 libtuner552.so（SHA256 `59a758d0b61ded96690c32bcee42d144b5250e6edc278c02d2d7ffd1bdc66067`）を独立に照合した。既存AArch64版の61か所・27関数という結果を、ARM32版にもそのまま適用しない。
+
+ARM32 .rel.pltからtuner_read_regのPLT26A4、tunerx_read_regのPLT26C8、tuner_device_ioctlのPLT2650を解決。線形Thumb探索で読出しAPIへの直接呼出し候補58か所、exported symbol範囲による所有関数候補27個。各候補のBLX先は固定検証ツールで再照合した。この方法はliteral poolも命令として解釈することがあるため、58という数だけで全データフローや全読出し経路の網羅を主張しない。
+
+追加で確認したi2crd（Thumb entry3D90）は、3D9A/3D9C/3D9Eで開始F2・個数20・device6Cを設定し、3DA4でtunerx_read_regへ渡す。戻ったu16領域を20個表示する（3DC6/3DDA）。ここにIQ信号源の選択、波形バッファの指定、内部窓の読出しモードを開始する書込みは見つからない。これは固定レジスタ列の診断であり、F2以降の値をIQと解釈する根拠にはならない。
+
+| 下位処理 | ARM32の実処理 |
+| --- | --- |
+| tunerx_read_reg（96E0） | 個数×12バイトを確保し、連続アドレスのdescriptorを作る。9736でtuner_read_regを呼び、descriptor+8のhalfwordを呼出し元のu16配列へコピーする |
+| tuner_read_reg（860C） | 12バイトdescriptorごとに862Aでtuner_device_ioctlへcommand0を渡す |
+| tuner_hwl_read（9570） | `movs r0, #0; bx lr`だけ。同じアドレスに他のstub名もあるため、そこへの参照をread専用とは解釈しない |
+| tuner_device_ioctl（7B0C） | command0〜9をTBBで分岐。0/3/6/8/9だけioctlを発行し、その他および10以上は102 |
+
+ioctlの独立照合は次の通り。TBB（7B16から10バイト）は命令ではなくunsigned-byteの分岐表として読み、dest=7B16+2×byteを計算した。
+
+| command | 分岐先 | ioctl番号 |
+| --- | --- | --- |
+| 0 | 7B20 | 400C6401 |
+| 3 | 7B2E | 800C6402 |
+| 6 | 7B3A | 800C6403 |
+| 8 | 7B32 | 400C6405 |
+| 9 | 7B36 | 400C6406 |
+| 1/2/4/5/7 | 7B3E | 発行なし、102 |
+
+これは既存AArch64／HTC側定義との対応とも一致し、ARM32だけに別のバルク波形読出しcommandがあるという根拠は得られなかった。チップの非公開機能や、他のコードが任意にレジスタを設定する可能性までは否定しない。
+
+```console
+python tools/tuner_arm32_read_flow.py --library /path/to/htv31-2.44/libtuner552.so --output arm32-read-flow.json
+```
+
+固定検証は正確なSHA256、ARM32 ELF、PT_LOAD対応、58BLX先、i2crdの引数、zero-return stub、descriptor経由call、10分岐先と5ioctl literalを照合する。実資料で成功し、異なるSHA256の入力を拒否した。メーカーELF／逆アセンブル原文は公開しない。
+
+線形Thumb探索の間接分岐候補は24か所だが、6332の`blx r0`候補はCN計算関数のliteral領域内にあり、605E/6106のVLDRから6330を参照することを照合した。word6330=47800000はfloat65536.0で、上位halfword4780がBLXのopcodeに見えるだけであり、この6332候補は呼出しではない。残りにはexported symbolのない後半コードやARM命令／veneerが混在する可能性があり、全てをチップのコールバックと分類していない。未解読の間接経路は残る。
+
+原証跡はローカルarm32-read-api-candidates.json、arm32-read-flow.json、direct-lower-symbol-candidates.json。今回の確認でIQ搬出経路は得られておらず、IQ形式・符号・サンプルレートは未確認。実機書込み・RAM転送・Flash書込みなし。次は未解読の間接経路を関数境界と呼出し元から分類し、実際にレジスタまたはサンプル読出しにつながるものがあるか確認する。
