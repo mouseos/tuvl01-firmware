@@ -155,3 +155,54 @@ python tools/tuner_arm32_read_flow.py --library /path/to/htv31-2.44/libtuner552.
 線形Thumb探索の間接分岐候補は24か所だが、6332の`blx r0`候補はCN計算関数のliteral領域内にあり、605E/6106のVLDRから6330を参照することを照合した。word6330=47800000はfloat65536.0で、上位halfword4780がBLXのopcodeに見えるだけであり、この6332候補は呼出しではない。残りにはexported symbolのない後半コードやARM命令／veneerが混在する可能性があり、全てをチップのコールバックと分類していない。未解読の間接経路は残る。
 
 原証跡はローカルarm32-read-api-candidates.json、arm32-read-flow.json、direct-lower-symbol-candidates.json。今回の確認でIQ搬出経路は得られておらず、IQ形式・符号・サンプルレートは未確認。実機書込み・RAM転送・Flash書込みなし。次は未解読の間接経路を関数境界と呼出し元から分類し、実際にレジスタまたはサンプル読出しにつながるものがあるか確認する。
+
+## ARM32間接分岐候補の分類
+
+同じARM32 libtuner552.soについて、前節で残した23候補を追跡した。24候補全体は、前回確認したCN定数1、libunwind処理21、abort後の到達不能箇所1、CPU状態復帰用veneer1という分類になった。これは固定バイナリと公開ソースに基づく静的な対応付けであり、全ての実行時コールバック対象を実行して確定したものではない。
+
+一次比較資料には、バイナリ内の`external/libcxxabi/src/Unwind/...`というソース名と同じ系統のAndroid 5.1.1_r38を使った。実際のメーカーのビルド版・コンパイラオプションを特定したという意味ではない。
+
+- [Android libunwind.cpp](https://android.googlesource.com/platform/external/libcxxabi/+/android-5.1.1_r38/src/Unwind/libunwind.cpp)
+- [Android UnwindCursor.hpp](https://android.googlesource.com/platform/external/libcxxabi/+/android-5.1.1_r38/src/Unwind/UnwindCursor.hpp)
+- [Android Unwind-EHABI.cpp](https://android.googlesource.com/platform/external/libcxxabi/+/android-5.1.1_r38/src/Unwind/Unwind-EHABI.cpp)
+- [Android UnwindRegistersRestore.S](https://android.googlesource.com/platform/external/libcxxabi/+/android-5.1.1_r38/src/Unwind/UnwindRegistersRestore.S)
+
+### cursorの生成とvtable
+
+A4D8の初期化処理は、A51Cのliteral＋ADD時PC A4E6＋A520のliteral＋8からEC54を計算し、A4EAでcursor先頭へ格納する。EC54（file DC54）には16個のThumb pointerが並ぶ。公開AbstractUnwindCursorの仮想関数順と、各pointer先のコードを照合した。
+
+| vtable offset | pointer | 対応候補 |
+| --- | --- | --- |
+| 00 / 04 | A64D / A651 | destructorの2slot |
+| 08 / 0C / 10 | A655 / A675 / A711 | validReg / getReg / setReg |
+| 14 / 18 / 1C | A7A9 / A7C9 / A879 | validFloatReg / getFloatReg / setFloatReg |
+| 20 / 24 / 28 | A94D / A999 / A9D1 | step / getInfo / jumpto |
+| 2C / 30 / 34 | A9E9 / A9F1 / AA4D | isSignalFrame / getFunctionName / setInfoBasedOnIPRegister |
+| 38 / 3C | AA9D / AAA5 | getRegisterName / saveVFPAsX |
+
+getReg候補A674は、CPUのSP/LR/PCに対応する13/14/15やUNW_REG_IP/UNW_REG_SPに対応する−1/−2を分岐し、cursor内の保存値を読む。バイナリには`libunwind::Registers_arm::getRegister(int)`とRegisters.hppの文字列もある。チップ内部レジスタのI2CアドレスやADC/IQのサンプル窓ではない。浮動小数点用getFloatRegもCPUのVFP状態として読む。
+
+### 24候補の対応
+
+| 分岐site | 分類と根拠 |
+| --- | --- |
+| 6332 | CN計算用float65536.0の上位halfword。前節の2VLDR参照で確認、命令ではない |
+| A27A / A32C | 例外処理phase1/phase2のpersonality callback。frame infoのhandlerを読み、exception/cursorとunwind状態を渡し、戻り値を分岐 |
+| A44C | exception cleanup callback。object+8がnonzeroなら引数1とobjectを渡してcallする処理が公開_Unwind_DeleteExceptionと一致 |
+| A536 / A544 | unw_get_regのvalidReg / getReg |
+| A566 / A576 / A596 | unw_set_regのvalidReg / setReg / IP変更時setInfoBasedOnIPRegister |
+| A5AA / A5B8 | unw_get_fpregのvalidFloatReg / getFloatReg |
+| A5DE / A5F0 | unw_set_fpregのvalidFloatReg / setFloatReg |
+| A608 / A616 / A634 / A648 | unw_step / unw_get_proc_info / unw_resume / unw_save_vfp_as_X |
+| A700 | 未対応CPUレジスタ番号のエラー経路。直前のAAAC helperはfprintf後にPLT2A28=abortを呼ぶため、戻ってここを実行する通常経路はない |
+| A960 / A982 / A990 | cursor step内のsetInfoBasedOnIPRegisterとSPのgetReg/setReg。公開EHABI版stepの動作と一致 |
+| AA04 / AA5E | 関数名取得／unwind情報更新で保存CPU IPを読むgetReg |
+| B630 | BX PCでThumbからARMへ切替。B634/B638のveneerはliteralFFFFFDC0＋B640からB400へ進む。B400はCPUのwCGR0〜3復帰用の4LDC2とreturnで、公開復帰assemblyと対応 |
+
+AA04の後にはPLT2A4C=dladdrと2A58=__snprintf_chk、AA5Eの後には2A64=__gnu_Unwind_Find_exidxへの呼出しがある。関数名と例外表を読む処理として独立に整合する。C4A6のUnwind-EHABI.cpp、C754のUnwindCursor.hpp、C7B7のRegisters.hppという原文字列も照合した。個々の間接calleeが常にこのvtableを持つことまで全プログラムで証明したものではないが、この候補集合からチューナーの隠しIQ callbackを示す根拠は得られなかった。
+
+固定検証ツールに24候補のhalfword、vtable16slot、constructorの計算と格納、cleanup処理、abortへのcall、mode切替veneerを追加した。前節の再現コマンドで58直接call／10ioctl分岐も含め成功し、別SHA256の入力は拒否する。分類名の意味はソースとの手動照合による推定であり、ツールのbyte一致だけで意味まで証明したとは扱わない。
+
+原資料とSHA256／出典はローカルlibunwind-referenceに保持。arm32-indirect-boundaries.jsonのARM.exidx範囲は候補の位置出しであり、範囲内に複数小関数やliteralを含む場合がある。arm32-read-flow.jsonに最終分類、arm32-cursor-vtable-xrefs.jsonに空だった初期xref探索結果を残す。空のxrefだけを「参照元がない」証拠にせず、その後にconstructorの別形式の計算を確認した。
+
+IQ信号源・I/Q形式・符号・サンプルレートは引き続き未確認。チップの非公開IQ機能の不存在を示したものではない。今回の間接候補追跡で実機へ試す新しい出力設定・内部メモリ読出しモードは得られず、実機変更は行っていない。

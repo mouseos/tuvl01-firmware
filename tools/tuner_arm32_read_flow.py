@@ -11,6 +11,130 @@ import struct
 SOURCE_SHA = "59a758d0b61ded96690c32bcee42d144b5250e6edc278c02d2d7ffd1bdc66067"
 CALLS = [(13328, 9892), (13374, 9892), (13606, 9892), (13672, 9892), (14010, 9892), (14314, 9892), (14846, 9892), (15120, 9892), (15194, 9892), (15364, 9892), (15638, 9892), (15704, 9892), (15780, 9928), (16034, 9892), (16388, 9892), (16800, 9892), (17360, 9892), (17812, 9892), (18184, 9892), (18460, 9892), (18930, 9892), (19022, 9892), (19212, 9892), (19470, 9892), (19598, 9892), (19742, 9892), (19920, 9892), (19982, 9892), (20102, 9892), (23718, 9892), (23968, 9892), (24160, 9892), (24274, 9892), (25762, 9892), (25854, 9892), (25976, 9892), (26078, 9892), (28064, 9892), (28176, 9892), (28410, 9892), (28698, 9892), (29118, 9892), (29488, 9892), (30044, 9892), (30380, 9892), (30540, 9892), (32954, 9892), (34282, 9892), (34594, 9892), (34916, 9892), (35416, 9892), (35824, 9892), (36626, 9892), (37184, 9892), (37246, 9892), (37320, 9892), (38202, 9892), (38710, 9892)]
 
+INDIRECT_CLASSIFICATIONS = [
+    {
+        "site": "00006332",
+        "halfword": "4780",
+        "classification": "CN float literal; not an instruction"
+    },
+    {
+        "site": "0000A27A",
+        "halfword": "4798",
+        "classification": "libunwind phase1 personality callback"
+    },
+    {
+        "site": "0000A32C",
+        "halfword": "4798",
+        "classification": "libunwind phase2 personality callback"
+    },
+    {
+        "site": "0000A44C",
+        "halfword": "4710",
+        "classification": "libunwind exception cleanup"
+    },
+    {
+        "site": "0000A536",
+        "halfword": "4790",
+        "classification": "unw_get_reg / validReg"
+    },
+    {
+        "site": "0000A544",
+        "halfword": "4790",
+        "classification": "unw_get_reg / getReg"
+    },
+    {
+        "site": "0000A566",
+        "halfword": "4790",
+        "classification": "unw_set_reg / validReg"
+    },
+    {
+        "site": "0000A576",
+        "halfword": "4798",
+        "classification": "unw_set_reg / setReg"
+    },
+    {
+        "site": "0000A596",
+        "halfword": "4790",
+        "classification": "unw_set_reg / setInfoBasedOnIPRegister"
+    },
+    {
+        "site": "0000A5AA",
+        "halfword": "4790",
+        "classification": "unw_get_fpreg / validFloatReg"
+    },
+    {
+        "site": "0000A5B8",
+        "halfword": "4790",
+        "classification": "unw_get_fpreg / getFloatReg"
+    },
+    {
+        "site": "0000A5DE",
+        "halfword": "4790",
+        "classification": "unw_set_fpreg / validFloatReg"
+    },
+    {
+        "site": "0000A5F0",
+        "halfword": "47A0",
+        "classification": "unw_set_fpreg / setFloatReg"
+    },
+    {
+        "site": "0000A608",
+        "halfword": "4708",
+        "classification": "unw_step / step"
+    },
+    {
+        "site": "0000A616",
+        "halfword": "4790",
+        "classification": "unw_get_proc_info / getInfo"
+    },
+    {
+        "site": "0000A634",
+        "halfword": "4788",
+        "classification": "unw_resume / jumpto"
+    },
+    {
+        "site": "0000A648",
+        "halfword": "4708",
+        "classification": "unw_save_vfp_as_X / saveVFPAsX"
+    },
+    {
+        "site": "0000A700",
+        "halfword": "4702",
+        "classification": "unreachable after libunwind abort helper"
+    },
+    {
+        "site": "0000A960",
+        "halfword": "4790",
+        "classification": "UnwindCursor::step / setInfoBasedOnIPRegister"
+    },
+    {
+        "site": "0000A982",
+        "halfword": "4790",
+        "classification": "UnwindCursor::step / getReg(UNW_REG_SP)"
+    },
+    {
+        "site": "0000A990",
+        "halfword": "47A8",
+        "classification": "UnwindCursor::step / setReg(UNW_REG_SP)"
+    },
+    {
+        "site": "0000AA04",
+        "halfword": "4790",
+        "classification": "UnwindCursor::getFunctionName / getReg(UNW_REG_IP)"
+    },
+    {
+        "site": "0000AA5E",
+        "halfword": "4790",
+        "classification": "UnwindCursor::setInfoBasedOnIPRegister / getReg(UNW_REG_IP)"
+    },
+    {
+        "site": "0000B630",
+        "halfword": "4778",
+        "classification": "Thumb-to-ARM veneer to CPU coprocessor restore"
+    }
+]
+CURSOR_VTABLE = (42573, 42577, 42581, 42613, 42769, 42921, 42953, 43129, 43341, 43417, 43473, 43497, 43505, 43597, 43677, 43685)
+
 def analyze(raw):
     if hashlib.sha256(raw).hexdigest() != SOURCE_SHA:
         raise ValueError("Requires exact HTV31 2.44 ARM32 libtuner552.so")
@@ -66,6 +190,22 @@ def analyze(raw):
         raise ValueError("ioctl literal changed")
     if word(0x6330) != 0x47800000 or blob(0x605e, 4) != bytes.fromhex("dfedb43a") or blob(0x6106, 4) != bytes.fromhex("dfed8a8a"):
         raise ValueError("CN float literal references changed")
+    # These classifications are source-level inferences; fixed byte checks
+    # reproduce their binary anchors, not a whole-program control-flow proof.
+    for entry in INDIRECT_CLASSIFICATIONS:
+        if struct.unpack("<H", blob(int(entry["site"], 16), 2))[0] != int(entry["halfword"], 16):
+            raise ValueError("Indirect candidate bytes changed")
+    if struct.unpack("<16I", blob(0xec54, 64)) != CURSOR_VTABLE:
+        raise ValueError("Unwind cursor vtable changed")
+    cursor = (word(0xa51c) + 0xa4e6 + word(0xa520) + 8) & 0xffffffff
+    if cursor != 0xec54 or blob(0xa4e2, 10) != bytes.fromhex("78440244184408322260"):
+        raise ValueError("Unwind cursor constructor changed")
+    if blob(0xa440, 14) != bytes.fromhex("01468a68002a08bf704701201047"):
+        raise ValueError("Exception cleanup callback changed")
+    if blx(0xaaca) != 0x2638 or blx(0xaace) != 0x2a28:
+        raise ValueError("Abort helper changed")
+    if blob(0xb630, 4) != bytes.fromhex("7847c046") or (word(0xb63c) + 0xb640) & 0xffffffff != 0xb400:
+        raise ValueError("CPU restore veneer changed")
     return {
         "source_sha256": SOURCE_SHA,
         "verified_read_api_calls": len(CALLS),
@@ -74,6 +214,8 @@ def analyze(raw):
         "shared_zero_return_stub_VA": "9570",
         "ioctl_case_destinations": [f"{v:08X}" for v in destinations],
         "CN_6330_literal_float": 65536.0,
+        "indirect_candidate_classifications": INDIRECT_CLASSIFICATIONS,
+        "classification_scope": "Matches Android5.1.1_r38 libunwind primary source and binary anchors. Runtime cursor targets/exception handlers not executed or exhaustively verified.",
         "IQ_verified": False,
     }
 
