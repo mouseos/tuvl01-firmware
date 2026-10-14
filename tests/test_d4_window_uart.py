@@ -40,6 +40,21 @@ class D4Window(unittest.TestCase):
         self.assertEqual(len(rows),1);self.assertEqual(rows[0]['selected'],0)
         self.assertEqual(rows[0]['last'],0x1e)
         with self.assertRaises(ValueError):m.probe(UART(),pathlib.Path('unused'),{},halted=True,buffered_live=True)
+    def test_individual_selector_whitelist_routes_and_restoration(self):
+        for index,selector in enumerate(m.BUFFERED_SELECTORS):
+            t=UART();r={};result='D4LIVE probe end status=read-restored-unclassified-reinitialize-required'
+            t.wait=lambda predicate,timeout:result
+            with mock.patch.object(m,'normal',return_value='SERVE end status=ready') as reload, mock.patch.object(m,'snapshot',return_value={}), mock.patch.object(m,'capture',return_value=(b'',{})):
+                m.probe(t,pathlib.Path('unused'),r,buffered_selector=selector)
+                self.assertEqual(reload.call_count,2)
+            self.assertEqual(t.sent,[bytes([0x8c,index]),b'i'])
+            self.assertEqual(r['buffered_selector'],selector)
+        t=UART()
+        for selector in (0,7,-1):
+            with self.assertRaises(ValueError):m.probe(t,pathlib.Path('unused'),{},buffered_selector=selector)
+        with self.assertRaises(ValueError):m.probe(t,pathlib.Path('unused'),{},buffered_selector=2,halted=True)
+        with self.assertRaises(ValueError):m.probe(t,pathlib.Path('unused'),{},buffered_selector=2,buffered_live=True)
+        self.assertEqual(t.sent,[])
     def test_partial_sample_lines_are_not_repaired(self):
         raw=b'D4WIN sample phase=00000001 index=00000000 first=00000015 data=0000003f last=00000015 before=00000001 after=00000002\nD4WIN sample phase=RTOS tick\nD4WIN readback requested=00000015 observed=0000000d\n'
         r=m.observations(raw)

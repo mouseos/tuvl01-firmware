@@ -95,7 +95,7 @@ static int live_samples(unsigned phase,unsigned selector,int requested){
     }
     return failed?-1:0;
 }
-void tuner_d4_window_live_buffered(void){
+static void live_probe(unsigned first,unsigned count){
     uint8_t control,high,low,saved,v;unsigned failed=0,restored=1,touched=0;
     uart_puts("D4LIVE probe start\n");
     if(tuner_read_register(0x61,0xf3,&control) || tuner_read_register(0x61,0xf4,&high) ||
@@ -109,7 +109,7 @@ void tuner_d4_window_live_buffered(void){
     static const uint8_t masks[]={0xcf,0xef,0xf7,0xd7,0xdf,0xe7};
     static const uint8_t bits[]={0x0c,0x2c,0x34,0x14,0x1c,0x24},selectors[]={1,5,6,2,3,4};
     uart_puts("D4LIVE saved=");uart_hex(saved);uart_puts("\n");
-    for(unsigned n=0;n<6;n++){
+    for(unsigned n=first;n<first+count;n++){
         uint8_t requested=(saved&masks[n])|bits[n];touched=1;
         uart_puts("D4LIVE block phase=");uart_hex(n+1);uart_puts(" selector=");uart_hex(selectors[n]);
         uart_puts(" requested=");uart_hex(requested);uart_puts("\n");
@@ -129,4 +129,10 @@ void tuner_d4_window_live_buffered(void){
     uart_puts(!restored?"D4LIVE probe end status=restore-failed-reinitialize-required\n":
               failed?"D4LIVE probe end status=read-failed-restored-reinitialize-required\n":
                      "D4LIVE probe end status=read-restored-unclassified-reinitialize-required\n");
+}
+
+void tuner_d4_window_live_buffered(void){live_probe(0,6);}
+void tuner_d4_window_live_selected(unsigned index){
+    if(index>=6){uart_puts("D4LIVE probe end status=unknown-selector\n");return;}
+    live_probe(index,1);
 }

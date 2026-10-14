@@ -6,6 +6,10 @@
 static uint8_t regs[256];
 static unsigned ops,fail_at,writes,times,acquiring,ignore_selection,persistent_restore,race;
 static char output[65536];
+static int uart_index=-1;static uint32_t ticks;
+int uart_getc(void){int value=uart_index;uart_index=-1;return value;}
+uint32_t xTaskGetTickCount(void){return ticks;}
+void vTaskDelay(uint32_t n){ticks+=n;}
 uint32_t board_time_counts(void){acquiring=!acquiring;return ++times;}
 void uart_puts(const char *s){
     if(!fail_at)assert(!acquiring);
@@ -28,7 +32,7 @@ int tuner_write_register(unsigned bank,unsigned reg,uint8_t value){
 }
 static void reset(void){
     memset(regs,0,sizeof regs);regs[0xd4]=0x1e;regs[0xf3]=0xe0;regs[0xf4]=2;regs[0xf5]=0x98;
-    ops=writes=times=acquiring=0;output[0]=0;
+    ops=writes=times=acquiring=0;output[0]=0;ticks=0;uart_index=-1;
 }
 int main(void){
     unsigned total=0;
@@ -51,4 +55,19 @@ int main(void){
     ignore_selection=persistent_restore=0;
     reset();regs[0xf3]=0x23;tuner_d4_window_live_buffered();assert(!writes);
     printf("PASS: live D4 buffer, %u uncertain I/O failures,64 rows, mismatch retention/abort, no PSEQ control writes\n",total);
+    for(unsigned index=0;index<6;index++){
+        unsigned single_total=0;
+        for(unsigned fail=0;!fail || fail<=single_total;fail++){
+            reset();fail_at=fail;tuner_d4_window_live_selected(index);
+            if(!fail){single_total=ops;assert(times==48 && writes==2);
+                assert(strstr(output,"read-restored-unclassified-reinitialize-required"));}
+            assert(regs[0xd4]==0x1e && regs[0xf3]==0xe0 && regs[0xf4]==2 && regs[0xf5]==0x98);
+        }
+        printf("PASS: individual D4 selector index%u, %u uncertain failures,24 rows/full restore\n",index,single_total);
+    }
+    reset();fail_at=0;tuner_d4_window_live_selected(6);assert(!writes && !ops);
+    reset();uart_index=255;tuner_d4_window_live_select();assert(!writes && !ops && strstr(output,"unknown-selector"));
+    reset();tuner_d4_window_live_select();assert(!writes && !ops && ticks==2000 && strstr(output,"selector-transport-timeout"));
+    reset();uart_index=3;tuner_d4_window_live_select();assert(writes==2 && times==48 && strstr(output,"selector=00000002"));
+
 }
