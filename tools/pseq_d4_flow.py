@@ -28,6 +28,27 @@ def analyze(data,manifest,initial_value=None):
             immediate=memory.get(address-1) if memory.get(address-2)==0x10 else None
             result.append({'address':f'{address:04X}','immediate_candidate':immediate})
         return result
+    def consumer_block(start,end):
+        # Inventory byte motifs inside bounded supplied ranges, not decoding.
+        internal=[];registers=[]
+        for address in range(start,end):
+            opcode=memory.get(address)
+            if opcode in (0xc0,0xc4,0xc5) and memory.get(address+1)==0x0f and address+2<end:
+                target=(memory[address+1]<<8)|memory[address+2]
+                internal.append({'address':f'{address:04X}','opcode':f'{opcode:02X}',
+                    'operand':f'{target:04X}',
+                    'role_candidate':'store' if opcode==0xc0 else 'read',
+                    'preceding_immediate_candidate':memory.get(address-1) if opcode==0xc0 and memory.get(address-2)==0x10 else None})
+            if opcode in (0x20,0x28,0x30) and address+1<end:
+                reg=memory[address+1]
+                if reg in (0xd3,0xd4,0xd5):
+                    registers.append({'address':f'{address:04X}','opcode':f'{opcode:02X}',
+                        'register':f'{reg:02X}',
+                        'role_candidate':'read' if opcode==0x30 else 'write',
+                        'immediate_candidate':memory.get(address+2) if opcode==0x28 else None})
+        return {'start':f'{start:04X}','end_exclusive':f'{end:04X}',
+            'all_bytes_supplied':all(a in memory for a in range(start,end)),
+            'internal_motifs':internal,'register_motifs':registers}
     selectors=[];value=initial_value
     for mask,bits,selection in ((0xcf,0x0c,1),(0xef,0x2c,5),(0xf7,0x34,6),
                                (0xd7,0x14,2),(0xdf,0x1c,3),(0xe7,0x24,4)):
@@ -61,6 +82,15 @@ def analyze(data,manifest,initial_value=None):
         'selectors':selectors,'branch_candidates':branches,
         'D5_store_0F0E_compare_0F0A_candidate':f'{one(bytes([0x30,0xd5,0xc0,0x0f,0x0e,0xc5,0x0f,0x0a,0x69,0x99,5])):04X}',
         'internal_0F0E_stores':stores(0x0f0e),
+        'internal_0F0E_read_motifs':[
+            {'address':f'{a:04X}','opcode':f'{op:02X}'}
+            for op in (0xc4,0xc5) for a in matches(bytes([op,0x0f,0x0e]))],
+        'D5_consumer_blocks':[
+            consumer_block(start,end) for start,end in
+            ((0x0603,0x060b),(0x060b,0x0639),(0x0639,0x068f),(0x068f,0x06d3))],
+        'D3_bit2_set_motifs':[f'{a:04X}' for a in matches(bytes([0x30,0xd3,0x74,4,0x20,0xd3]))],
+        'D3_bit2_clear_motifs':[f'{a:04X}' for a in matches(bytes([0x30,0xd3,0x70,0xfb,0x20,0xd3]))],
+        'D4_operand02_write28_motifs':[f'{a:04X}' for a in matches(bytes([0x28,0xd4,2]))],
         'classification':'Selected scalar/control hypothesis; neither IQ samples nor absence of IQ functionality established.'}
 
 def main():
