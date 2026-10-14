@@ -81,3 +81,39 @@ libDtv.soにはDTVSV_MSGID_AIR_SET_TUNER_LOG_REQ / AIR_GET_TUNER_LOG_STATUS_REQ�
 中間の文字列xref探索は候補の位置出しにだけ使用した。ARM.exidxの範囲が複数の小関数をまとめる場合があるため、unwind範囲の開始を個々の関数開始と同一視しない。文字列ロードの候補だけで関数名や完全なフローを確定しない。公開ツールは表ポインタ・直接call・literalの独立照合に限定した。
 
 実資料で全9call先と2内部ID・送信サイズが一致し、誤ったsource hashは拒否されることを確認した。原証跡はdtv-tuner-log-server-{disassembly,send-disassembly,xrefs,flow}.jsonとdtv-tuner-log-{air-symbols,lowercase-strings}.json。原逆アセンブルはローカルだけに保持。今回の調査はログ内容を確定しておらず、IQ信号源・形式・符号・サンプルレートは未確認。実機操作・RAM再転送・Flash保存なし。
+
+## AIR受信側の受付表と無効なログ要求
+
+HTV31 2.44の内部要求10030024/25を受けるAIR側を静的に追跡した。結論は、この版の通常MAIN発のログ要求に対する受付フラグが全状態で0であり、同じ表の処理ポインタも0ということ。JNI/API名称が存在することだけでは、実装されたチューナーロガーやIQ取得機能の証拠にならない。MN885521自体のIQ機能の不存在は示していない。
+
+libDtv.soのSHA256は`33a1efb1e73b981f72ee71b86798938447ff517f79d86b659acfa36f076259de`。exportされたtbl_DtvSvCom_TaskListはVA300A0、420バイト。g_DtvSvCom_TaskList_Num（30278）のuint16は15で、28バイト×15行として読む。行2は名称AIR（name pointer1E5A5）、task ID8A101003。初期探索の「15 wordごとの行」という分割は誤りで、最終解析には使用しない。
+
+サーバーの678C8にも8A101003。6788CのCreateTaskThread呼出しに渡すcallbackは、678F0のliteralを67888のADD PC（PC6788C）に足して67A91（Thumb entry67A90）。AIR entryの67ADCは92108を反復呼出しする。92166のReceive側呼出しにもliteral92338から8A101003を渡す。92108は922D4で91A08の受付判定へ進み、受理時は922E6で91FF4へ進む。
+
+91A08はmessage sourceと8A101003／8A101002を比較し、MAIN由来を分類1として受付表へ進める。91AC0/91AC4はcommand−10030000を計算し、91AC8で状態候補を取得。91AD2/91AD6はtable[12×command_index+state]のbyteを読み、1との一致を判定する。状態の名称は未確認。実行router91C18にも同じcommand正規化があり、状態0〜5を分岐する。
+
+受付・処理ポインタ・次状態の3箇所から、同じGOT VA442C48、表VA445150を独立に照合した。処理呼出し側9C798は12×index+table+8からポインタを読み、9C7E0でnullを判定する。非nullのときだけ9C7E4で間接callする。91C18内のこの経路への直接callは91CF0。別分岐の全挙動まで解読済みとはしない。次状態はrecord+6のhalfwordで、FFFFと比較して更新を省く経路がある。
+
+| 要求 | index | record VA / file offset | 先頭6受付byte | +6 halfword | +8 Thumb pointer |
+| --- | --- | --- | --- | --- | --- |
+| 10030024 | 24 | 445300 / 444300 | 00 00 00 00 00 00 | FFFF | 00000000 |
+| 10030025 | 25 | 44530C / 44430C | 00 00 00 00 00 00 | FFFF | 00000000 |
+| 隣接10030026（形式照合用） | 26 | 445318 / 444318 | 00 01 00 01 01 01 | FFFF | 000A13A9 |
+
+AIR自身からのmessageは受付表の判定を迂回する分岐がある。したがって「全ての発信元・全ての分岐で同一のエラーを返す」とは主張しない。通常MAIN発の受付が0であることと、追跡した処理表のログ2行に関数がないことを結論とする。エラーreplyの具体的な意味・payloadと、別経路のログ内容は未確認。
+
+### 手元の旧版との比較
+
+1.08と1.11のdtvserverは同じSHA256 `015096d98fed6f27c1275e5c6f04ad5457a0abf241e5a112b64fc461e2c815cc`。旧版では926F4〜92706でAIR／MAINのsource IDを判定、9270E/92712で同じcommand−10030000、92720/92724で12×index+stateのbyteを読む。GOTの計算方法は異なり、GOT base4446A0＋literalFFFFE544→442BE4、参照先table445150。ログ2行の先頭6byteは全0、+6はFFFF、+8のwordは0。隣接26行の+8は000A221Dで、非zero行もある。
+
+旧版は受付表までの比較に限定した。JNIからqueue、callback、間接handlerまでを旧版について全面的に再追跡したものではない。それでも、手元の旧版へ切り替えれば通常ログ要求を受け付けるという根拠は得られない。
+
+### 再現と次の調査
+
+```console
+python tools/tuner_log_server_flow.py --server /path/to/2.44/dtvserver --common /path/to/2.44/libDtv.so --comparison-server /path/to/1.08/dtvserver --output air-flow.json
+```
+
+追加オプションを省略しても2.44受信側の固定モチーフを検証する。--commonはAIR名称／task IDを追加照合、--comparison-serverは旧版の受付表を照合する。正確な入力SHA256、PT_LOAD対応、命令モチーフ、7追加直接call、3独立表参照、ログ2行と非zero隣接行を検証。実資料3ファイルで成功し、各解析関数が異なるSHA256の入力を拒否することを確認した。ツールは動的検証や完全な逆アセンブラではない。
+
+今回の原証跡はローカルdtv-air-receiver-flow.jsonとdtv-old-{normalization-candidates,air-table-candidates}.json。メーカーELF・原逆アセンブルは公開しない。実機操作・RAM転送・Flash書込みは行っていない。IQ信号源・形式・符号・サンプルレートは引き続き未確認、最新TS品質は未復帰。次はログAPIから離れ、下位チューナーの直接操作経路で出力設定／内部メモリ読出しを探す。
