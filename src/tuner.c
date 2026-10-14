@@ -174,6 +174,10 @@ static int write_chunk(unsigned address,unsigned reg,const uint8_t *bytes,unsign
 int tuner_write_register(unsigned address,unsigned reg,uint8_t byte){
     return write_chunk(address,reg,&byte,1);
 }
+int tuner_write_burst(unsigned address,unsigned reg,const uint8_t *bytes,unsigned count){
+    if(count>8)return -1;
+    return write_chunk(address,reg,bytes,count);
+}
 void tuner_probe(void){
     uint8_t byte;
     uart_puts("TUNER probe start\n");controller_init();registers();

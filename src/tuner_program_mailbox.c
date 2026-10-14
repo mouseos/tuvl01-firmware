@@ -23,15 +23,21 @@ static int mailbox_transfer(uint8_t operand){
     if(tuner_write_register(0x61,0xf3,0xe3) || tuner_read_register(0x61,0xf3,&v))return -1;
     uart_puts("MAILBOX transfer armed f3=");uart_hex(v);uart_puts("\n");
     if(v!=0xe1 && v!=0xe3)return -1;
-    if(tuner_write_register(0x61,0xf6,0xc5) ||
-       tuner_write_register(0x61,0xf6,0x0f) ||
-       tuner_write_register(0x61,0xf6,operand))return -1;
+    const uint8_t payload[3]={0xc5,0x0f,operand};
+    if(tuner_write_burst(0x61,0xf6,payload,3))return -1;
     /* C5/0F/0C has even bit parity; C5/0F/0D has odd parity. */
-    if(tuner_read_register(0x61,0xf8,&v))return -1;
-    uart_puts("MAILBOX transfer parity f8=");uart_hex(v);
-    uart_puts(" expected=");uart_hex(operand==0x0d);uart_puts("\n");
-    if(((v>>4)&1)!=(operand==0x0d))return -1;
-    return 0;
+    unsigned matches=0;
+    /* Eight finite observations, spaced by UART output and I2C latency.
+     * Require the final three to match; never ignore a parity mismatch.
+     * The time interval is not a calibrated sampling rate. */
+    for(unsigned n=0;n<8;n++){
+        if(tuner_read_register(0x61,0xf8,&v))return -1;
+        uart_puts("MAILBOX transfer parity index=");uart_hex(n);
+        uart_puts(" f8=");uart_hex(v);
+        uart_puts(" expected=");uart_hex(operand==0x0d);uart_puts("\n");
+        if(((v>>4)&1)==(operand==0x0d))matches++;else matches=0;
+    }
+    return matches>=3?0:-1;
 }
 static int mailbox_samples(unsigned phase){
     for(unsigned n=0;n<16;n++){

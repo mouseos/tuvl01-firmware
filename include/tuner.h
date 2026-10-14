@@ -27,6 +27,8 @@ int tuner_read_burst(unsigned address,unsigned reg,uint8_t *bytes,unsigned count
  * Accepts 2..8 bytes, and leaves register/source selection unchanged. */
 int tuner_read_burst_restart(unsigned address,unsigned reg,uint8_t *bytes,unsigned count,unsigned *received);
 int tuner_write_register(unsigned address,unsigned reg,uint8_t byte);
+/* One pointer write followed by 1..8 payload bytes in a single transaction. */
+int tuner_write_burst(unsigned address,unsigned reg,const uint8_t *bytes,unsigned count);
 void tuner_analog(void);
 void tuner_initialize(void);
 #endif
