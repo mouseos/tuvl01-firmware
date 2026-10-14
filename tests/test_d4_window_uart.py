@@ -9,6 +9,26 @@ class UART:
     def expect(self,line):return line
 
 class D4Window(unittest.TestCase):
+    def test_halted_lifecycle_reloads_after_success_failure_and_timeout(self):
+        for result in ('D4WIN probe end status=read-restored-unclassified-reinitialize-required',
+                       'D4WIN probe end status=read-failed-restored-reinitialize-required',TimeoutError('probe')):
+            t=UART();r={}
+            def wait(predicate,timeout):
+                if isinstance(result,Exception):raise result
+                assert predicate(result);return result
+            t.wait=wait
+            with mock.patch.object(m,'normal',return_value='SERVE end status=ready') as reload, mock.patch.object(m,'snapshot',return_value={}), mock.patch.object(m,'capture',return_value=(b'',{})):
+                if isinstance(result,str) and 'status=read-restored-' in result:m.probe(t,pathlib.Path('unused'),r,halted=True)
+                else:
+                    with self.assertRaises((RuntimeError,TimeoutError)):m.probe(t,pathlib.Path('unused'),r,halted=True)
+                self.assertEqual(reload.call_count,2)
+            self.assertEqual(t.sent,[b'\x87',b'i']);self.assertTrue(r['uart_responding'])
+    def test_partial_sample_lines_are_not_repaired(self):
+        raw=b'D4WIN sample phase=00000001 index=00000000 first=00000015 data=0000003f last=00000015 before=00000001 after=00000002\nD4WIN sample phase=RTOS tick\nD4WIN readback requested=00000015 observed=0000000d\n'
+        r=m.observations(raw)
+        self.assertEqual(len(r['rows']),1)
+        self.assertEqual(r['rows'][0]['data'],0x3f)
+        self.assertEqual(r['readbacks'],[{'requested':0x15,'observed':0xd}])
     def run_probe(self,fail=False,restore_fail=False):
         state={'d4':0xde,'reads':0,'writes':[]};t=UART();r={}
         def reg(t,bank,addr,value=None):

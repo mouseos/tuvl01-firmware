@@ -1,5 +1,5 @@
 """Finite stock D4 selection/D5 scalar comparison over UART; IQ unproven."""
-import argparse,json,pathlib,time
+import argparse,json,pathlib,time,re
 from uart import Transport
 from tuner_mailbox_probe import normal
 from tuner_pattern_capture import register,capture
@@ -10,7 +10,7 @@ from ts_capture import inspect
 # No arbitrary field values or PSEQ halt/patch writes in this experiment.
 SELECTORS=((2,0xd7,0x14),(3,0xdf,0x1c),(4,0xe7,0x24))
 
-def probe(t,output,report):
+def _live_probe(t,output,report):
     report.update(iq_identified=False,initialization=normal(t),rows=[],blocks=[])
     saved=None;touched=False
     try:
@@ -50,20 +50,56 @@ def probe(t,output,report):
                 t.write(b'i');t.expect('UART application');report['uart_responding']=True
                 report['state_after_capture']=snapshot(t)
 
+def observations(raw):
+    fields=('phase','index','first','data','last','before','after')
+    sample=rb'^D4WIN sample phase=([0-9a-f]{8}) index=([0-9a-f]{8}) first=([0-9a-f]{8}) data=([0-9a-f]{8}) last=([0-9a-f]{8}) before=([0-9a-f]{8}) after=([0-9a-f]{8})\r?$'
+    readback=rb'^D4WIN readback requested=([0-9a-f]{8}) observed=([0-9a-f]{8})\r?$'
+    return dict(scope='Complete UART rows; scalar and timestamp interpretation unproven',
+        rows=[dict(zip(fields,[int(x,16) for x in m])) for m in re.findall(sample,raw,re.M)],
+        readbacks=[dict(zip(('requested','observed'),[int(x,16) for x in m])) for m in re.findall(readback,raw,re.M)])
+
+def probe(t,output,report,halted=False):
+    report['halted']=halted
+    if not halted:return _live_probe(t,output,report)
+    report.update(iq_identified=False,initialization=normal(t))
+    try:
+        report['state_before_probe']=snapshot(t)
+        t.write(b'\x87');t.expect('D4WIN probe start');report['probe_started']=True
+        report['probe']=t.wait(lambda s:s.startswith('D4WIN probe end status='),30)
+        report['state_after_probe']=snapshot(t)
+    except Exception as error:
+        report['probe_error']=str(error);raise
+    finally:
+        report['normal_reload']=normal(t)
+        try:
+            report['state_after_reload']=snapshot(t)
+            data,summary=capture(t,output)
+            report['normal_capture']={**summary,**(inspect(data) if data else {})}
+        except Exception as error:
+            report['capture_error']=str(error);raise
+        finally:
+            t.write(b'i');t.expect('UART application');report['uart_responding']=True
+            report['state_after_capture']=snapshot(t)
+    if report['probe']!='D4WIN probe end status=read-restored-unclassified-reinitialize-required':
+        raise RuntimeError(report['probe'])
+
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--port',required=True)
     p.add_argument('--log',required=True,type=pathlib.Path)
     p.add_argument('--output-dir',required=True,type=pathlib.Path)
+    p.add_argument('--halted',action='store_true',help='RAM opcode0x87: halt PSEQ, buffer stock D4 selections, restore D4 before resume')
     a=p.parse_args();a.log.parent.mkdir(parents=True,exist_ok=True)
     a.output_dir.mkdir(parents=True,exist_ok=True);report={'iq_identified':False}
+    offset=a.log.stat().st_size if a.log.exists() else 0
     with a.log.open('ab') as log:
         t=Transport(a.port,log)
         try:
-            t.write(b'i');t.expect('UART application');probe(t,a.output_dir/'normal.ts',report)
+            t.write(b'i');t.expect('UART application');probe(t,a.output_dir/'normal.ts',report,a.halted)
         except Exception as error:report['error']=str(error);raise
         finally:
-            t.ser.close();(a.output_dir/'report.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
+            t.ser.close();log.flush();report['observations']=observations(a.log.read_bytes()[offset:])
+            (a.output_dir/'report.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
     print(json.dumps(report,indent=2))
 
 if __name__=='__main__':main()
